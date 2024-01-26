@@ -1,6 +1,6 @@
 from gtts import gTTS
 from glob import glob
-from os import path, makedirs
+from os import path, makedirs, remove
 from time import sleep
 from threading import Thread, Event
 
@@ -9,7 +9,7 @@ def spinner(shouldSpin):
     chars = "-\|/"
     while shouldSpin.is_set():
         for char in chars:
-            print(char, end="\r")
+            print(f"Speaking... {char}", end="\r")
             sleep(0.1)
 
 
@@ -39,6 +39,7 @@ if __name__ == "__main__":
                 shouldSpin.clear()
                 spinnerThread.join()
                 print(f"Finished")
+                remove(filepath)
         print("All files completed.")
     else:
         print("No text files found.")
