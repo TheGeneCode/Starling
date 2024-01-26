@@ -20,21 +20,25 @@ if __name__ == "__main__":
     if not path.exists(outputFolderPath):
         makedirs(outputFolderPath)
 
-    for filepath in glob(inputFolderPath):
-        with open(filepath, "r", encoding="utf8") as file:
-            filename = path.basename(filepath).split(".")[0]
-            outputFilepath = path.join(outputFolderPath, f"{filename}.mp3")
-            print(f"Starting {filename}")
-            # thread for the spinner
-            shouldSpin = Event()
-            shouldSpin.set()
-            spinnerThread = Thread(target=spinner, args=(shouldSpin,))
-            spinnerThread.start()
-            # slow task
-            tts = gTTS(text=file.read(), tld="us")
-            tts.save(outputFilepath)
-            # close spinner thread
-            shouldSpin.clear()
-            spinnerThread.join()
-            print(f"Finished")
-    print("All files completed.")
+    inputPaths = [path for path in glob(inputFolderPath)]
+    if inputPaths:
+        for filepath in glob(inputFolderPath):
+            with open(filepath, "r", encoding="utf8") as file:
+                filename = path.basename(filepath).split(".")[0]
+                outputFilepath = path.join(outputFolderPath, f"{filename}.mp3")
+                print(f"Starting {filename}")
+                # thread for the spinner
+                shouldSpin = Event()
+                shouldSpin.set()
+                spinnerThread = Thread(target=spinner, args=(shouldSpin,))
+                spinnerThread.start()
+                # slow task
+                tts = gTTS(text=file.read(), tld="us")
+                tts.save(outputFilepath)
+                # close spinner thread
+                shouldSpin.clear()
+                spinnerThread.join()
+                print(f"Finished")
+        print("All files completed.")
+    else:
+        print("No text files found.")
