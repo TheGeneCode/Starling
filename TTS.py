@@ -39,7 +39,8 @@ if __name__ == "__main__":
                 shouldSpin.clear()
                 spinnerThread.join()
                 print(f"Finished")
-                remove(filepath)
+        for filepath in glob(inputFolderPath):
+            remove(filepath)
         print("All files completed.")
     else:
         print("No text files found.")
