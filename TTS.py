@@ -3,7 +3,7 @@ import itertools
 import time
 from gtts import gTTS
 from glob import glob
-from os import path, makedirs, remove
+from os import path, makedirs
 from threading import Thread, Event
 
 
