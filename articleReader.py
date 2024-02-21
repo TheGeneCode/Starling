@@ -5,8 +5,12 @@ from gtts import gTTS
 from glob import glob
 from os import path, makedirs
 from threading import Thread, Event
-from TTS.api import TTS
-import torch
+
+# from TTS.api import TTS
+# import torch
+# import subprocess
+import logging
+import re
 
 
 def spinner(shouldSpin: Event) -> None:
@@ -22,7 +26,16 @@ def spinner(shouldSpin: Event) -> None:
         time.sleep(0.1)
 
 
+def removeCitations(text):
+    citations_regex = r"\([^\)]+(?:,\s*\d{4}(?:[a-zA-Z]?)?(?:,\s*p\.\s*\d+)?)+\)"
+    return re.sub(citations_regex, "", text)
+
+
 if __name__ == "__main__":
+    logging.basicConfig(
+        filename="logfile.txt", level=logging.ERROR, format="%(asctime)s %(message)s"
+    )
+
     inputFolderPath = r"C:\Users\user\scripts\python\TTS\input\*.txt"
     outputFolderPath = r"C:\Users\user\scripts\manual podcasts"
     archiveFolderPath = r"C:\Users\user\scripts\python\TTS\archive"
@@ -53,12 +66,15 @@ if __name__ == "__main__":
                 spinnerThread.start()
                 # slow task
                 try:
-                    # OLD WAY, uses google API, not terrible
-                    # tts = gTTS(text=file.read(), tld="us")
-                    # tts.save(outputFilepath)
-                    device = "cuda" if torch.cuda.is_available() else "cpu"
-                    tts = TTS("tts_models/en/ljspeech/tacotron2-DDC_ph").to(device)
-                    tts.tts_to_file(text=file.read(), file_path=outputFilepath)
+                    text = file.read()
+                    text = removeCitations(text)
+                    # uses google API, not terrible
+                    tts = gTTS(text=text, tld="us")
+                    tts.save(outputFilepath)
+                    # uses on client AI voice
+                    # device = "cuda" if torch.cuda.is_available() else "cpu"
+                    # tts = TTS("tts_models/en/ljspeech/tacotron2-DDC_ph").to(device)
+                    # tts.tts_to_file(text=file.read(), file_path=outputFilepath)
                 except Exception as e:
                     print(f"Error occurred while processing {filepath}: {str(e)}")
                 # close spinner thread
