@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import messagebox
 import pyperclip
 from os import path
 
@@ -16,6 +15,28 @@ previous_clipboard = (
 var1 = tk.StringVar()
 var2 = tk.StringVar()
 outputFolderPath = r"C:\Users\user\scripts\python\TTS\input"
+
+discard_after_strings = ["Related:"]
+discard_after_lines = ["For more", "THE LATEST NEWS"]
+
+
+def refine_text(text):
+    # Find the first occurrence of any discard string in the text
+    discard_index = min(
+        [text.find(s) for s in discard_after_strings]
+    )  # -1 if none found
+    if discard_index >= 0:
+        text = text[:discard_index]
+
+    # Search for whole lines that are not wanted and discard everything after
+    lines = text.splitlines(keepends=True)
+    text = ""
+    for line in lines:
+        if line.strip() in discard_after_lines:
+            break
+        text += line
+
+    return text
 
 
 def shorten_text(text, max_length=92):
@@ -53,6 +74,7 @@ def check_clipboard():
     text = pyperclip.paste()  # Get clipboard content
     if text and text != previous_clipboard:  # Check for new content
         previous_clipboard = text  # Update previous content
+        text = refine_text(text)
         if not var1.get():
             var1.set(text)
             update_entry(entry1, text)
@@ -67,7 +89,7 @@ def check_clipboard():
                 else (var2.get(), var1.get())
             )
             outputFilepath = path.join(outputFolderPath, f"{short_text}.txt")
-            with open(outputFilepath, "x", encoding="utf-8") as f:
+            with open(outputFilepath, "w", encoding="utf-8") as f:
                 f.write(long_text)
             # Clear variables
             var1.set("")
