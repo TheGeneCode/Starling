@@ -67,11 +67,13 @@ def check_clipboard():
                 else (var2.get(), var1.get())
             )
             outputFilepath = path.join(outputFolderPath, f"{short_text}.txt")
-            with open(outputFilepath, "x") as f:
+            with open(outputFilepath, "x", encoding="utf-8") as f:
                 f.write(long_text)
             # Clear variables
             var1.set("")
             var2.set("")
+            update_entry(entry1, "")
+            update_entry(entry2, "")
     # Schedule continuous checking for clipboard changes
     root.after(100, check_clipboard)  # Check every 100 milliseconds
 
