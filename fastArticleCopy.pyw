@@ -16,11 +16,17 @@ var1 = tk.StringVar()
 var2 = tk.StringVar()
 outputFolderPath = r"C:\Users\user\scripts\python\TTS\input"
 
-discard_after_strings = ["Related:"]
-discard_after_lines = ["For more", "THE LATEST NEWS"]
+
+def make_filename_ready(filename):
+    valid_chars = "-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    allowed_filename = "".join(c for c in filename if c in valid_chars)
+
+    return allowed_filename
 
 
 def refine_text(text):
+    discard_after_strings = ["Related:"]
+    discard_after_lines = ["For more", "THE LATEST NEWS"]
     # Find the first occurrence of any discard string in the text
     discard_index = min(
         [text.find(s) for s in discard_after_strings]
@@ -88,6 +94,7 @@ def check_clipboard():
                 if len(var1.get()) > len(var2.get())
                 else (var2.get(), var1.get())
             )
+            short_text = make_filename_ready(short_text)
             outputFilepath = path.join(outputFolderPath, f"{short_text}.txt")
             with open(outputFilepath, "w", encoding="utf-8") as f:
                 f.write(long_text)
