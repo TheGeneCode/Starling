@@ -1,3 +1,4 @@
+import re
 import tkinter as tk
 import pyperclip
 from os import path
@@ -19,7 +20,7 @@ outputFolderPath = r"C:\Users\user\scripts\python\TTS\input"
 
 def make_filename_ready(filename):
     valid_chars = "-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    allowed_filename = "".join(c for c in filename if c in valid_chars)
+    allowed_filename = re.sub(r"[^" + valid_chars + "]", "", filename)
 
     return allowed_filename
 
