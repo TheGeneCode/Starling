@@ -2,12 +2,29 @@ import re
 import tkinter as tk
 import pyperclip
 from os import path
+import subprocess
+
+
+def runArticleReader():
+    subprocess.Popen(
+        [
+            "python",
+            r"C:\Users\user\scripts\python\TTS\articleReader.py",
+        ]
+    )
+
+
+def on_closing(event=None):
+    runArticleReader()
+    root.destroy()
+
 
 # Create the main window
 root = tk.Tk()
 root.geometry("500x90")
 root.title("Fast Article Copy")
 root.attributes("-topmost", True)
+root.protocol("WM_DELETE_WINDOW", on_closing)
 
 # Define variables to store clipboard content
 previous_clipboard = (
