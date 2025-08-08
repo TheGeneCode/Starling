@@ -1,21 +1,30 @@
+"""
+A clipboard monitoring Tkinter application for quickly capturing and saving article text.
+
+This script creates a GUI window that monitors clipboard changes, refines and stores up to two copied texts,
+and automatically saves the longer text to a file in a specified folder when both slots are filled.
+It also launches an external article reader script upon window close.
+"""
+
 import re
-import tkinter as tk
-import pyperclip
-from os import path
 import subprocess
+import tkinter as tk
+from pathlib import Path
+
+import pyperclip
 
 
-def runArticleReader():
+def run_article_reader() -> None:
     subprocess.Popen(
-        [
+        [  # noqa: S607
             "python",
-            r"C:\Users\user\scripts\python\TTS\articleReader.py",
-        ]
+            r"C:\Users\user\dev\TTS\articleReader.py",
+        ],
     )
 
 
-def on_closing(event=None):
-    runArticleReader()
+def on_closing() -> None:
+    run_article_reader()
     root.destroy()
 
 
@@ -23,7 +32,7 @@ def on_closing(event=None):
 root = tk.Tk()
 root.geometry("500x90")
 root.title("Fast Article Copy")
-root.attributes("-topmost", True)
+root.attributes("-topmost", True)  # noqa: FBT003
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
 # Define variables to store clipboard content
@@ -32,22 +41,20 @@ previous_clipboard = (
 )  # set to clipboard at launch so initial contents aren't copied
 var1 = tk.StringVar()
 var2 = tk.StringVar()
-outputFolderPath = r"C:\Users\user\scripts\python\TTS\input"
+output_folder_path = r"C:\Users\user\dev\TTS\input"
 
 
-def make_filename_ready(filename):
+def make_filename_ready(filename: str) -> str:
     valid_chars = "-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    allowed_filename = re.sub(r"[^" + valid_chars + "]", "", filename)
-
-    return allowed_filename
+    return re.sub(r"[^" + valid_chars + "]", "", filename)
 
 
-def refine_text(text):
+def refine_text(text: str) -> str:
     discard_after_strings = ["Related:"]
     discard_after_lines = ["For more", "THE LATEST NEWS"]
     # Find the first occurrence of any discard string in the text
     discard_index = min(
-        [text.find(s) for s in discard_after_strings]
+        [text.find(s) for s in discard_after_strings],
     )  # -1 if none found
     if discard_index >= 0:
         text = text[:discard_index]
@@ -63,9 +70,9 @@ def refine_text(text):
     return text
 
 
-def shorten_text(text, max_length=92):
+def shorten_text(text: str, max_length: int = 92) -> str:
     """
-    Shortens text to a maximum length, adding ellipsis if truncated.
+    Shorten text to a maximum length, adding ellipsis if truncated.
 
     Args:
         text: The text to shorten.
@@ -79,9 +86,9 @@ def shorten_text(text, max_length=92):
     return text[: max_length - 3] + "..."
 
 
-def update_entry(entry, text):
+def update_entry(entry: tk.Entry, text: str) -> None:
     """
-    Updates the content of an entry widget.
+    Update the content of an entry widget.
 
     Args:
         entry: The entry widget to update.
@@ -93,8 +100,8 @@ def update_entry(entry, text):
     entry.config(state="disabled")  # Disable editing again
 
 
-def check_clipboard():
-    global previous_clipboard  # Access global variable
+def check_clipboard() -> None:
+    global previous_clipboard  # Access global variable  # noqa: PLW0603
     text = pyperclip.paste()  # Get clipboard content
     if text and text != previous_clipboard:  # Check for new content
         previous_clipboard = text  # Update previous content
@@ -113,8 +120,9 @@ def check_clipboard():
                 else (var2.get(), var1.get())
             )
             short_text = make_filename_ready(short_text)
-            outputFilepath = path.join(outputFolderPath, f"{short_text}.txt")
-            with open(outputFilepath, "w", encoding="utf-8") as f:
+            output_file_path = Path(output_folder_path) / f"{short_text}.txt"
+            with output_file_path.open("w", encoding="utf-8") as f:
+                f.write(long_text)
                 f.write(long_text)
             # Clear variables
             var1.set("")

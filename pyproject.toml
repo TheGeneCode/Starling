@@ -1,0 +1,14 @@
+[project]
+name = "tts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gtts>=2.5.4",
+    "kittentts",
+    "pyperclip>=1.9.0",
+]
+
+[tool.uv.sources]
+kittentts = { url = "https://github.com/KittenML/KittenTTS/releases/download/0.1/kittentts-0.1.0-py3-none-any.whl" }
