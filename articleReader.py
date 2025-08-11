@@ -61,6 +61,7 @@ if __name__ == "__main__":
     input_paths = list(input_folder_path.glob("*.txt"))
     if input_paths:
         for filepath in input_paths:
+            success = False
             with filepath.open("r", encoding="utf8") as file:
                 filename = filepath.stem
                 output_file_path = output_folder_path / f"{filename}.wav"
@@ -94,10 +95,7 @@ if __name__ == "__main__":
                     # device = "cuda" if torch.cuda.is_available() else "cpu"
                     # tts = TTS("tts_models/en/ljspeech/tacotron2-DDC_ph").to(device)
                     # tts.tts_to_file(text=file.read(), file_path=outputFilepath)
-                    shutil.move(
-                        filepath,
-                        str(Path(archive_folder_path) / Path(filepath).name),
-                    )
+                    success = True
                 except (FileNotFoundError, PermissionError, OSError) as e:
                     print(f"File error while processing {filepath}: {e!s}")
                 except gTTSError as e:
@@ -111,6 +109,14 @@ if __name__ == "__main__":
                 should_spin.clear()
                 spinner_thread.join()
                 print("Finished")
+            if success:
+                try:
+                    shutil.move(
+                        filepath,
+                        str(Path(archive_folder_path) / Path(filepath).name),
+                    )
+                except (FileNotFoundError, PermissionError, OSError) as e:
+                    print(f"Error moving file {filepath}: {e!s}")
         print("All files completed.")
     else:
         print("No text files found.")
