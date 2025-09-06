@@ -50,6 +50,7 @@ def make_filename_ready(filename: str) -> str:
 
 
 def refine_text(text: str) -> str:
+    text = re.sub(r"\[\d+\]", "", text)
     discard_after_strings = ["Related:"]
     discard_after_lines = ["For more", "THE LATEST NEWS"]
     # Find the first occurrence of any discard string in the text
@@ -122,7 +123,6 @@ def check_clipboard() -> None:
             short_text = make_filename_ready(short_text)
             output_file_path = Path(output_folder_path) / f"{short_text}.txt"
             with output_file_path.open("w", encoding="utf-8") as f:
-                f.write(long_text)
                 f.write(long_text)
             # Clear variables
             var1.set("")
