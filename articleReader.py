@@ -45,7 +45,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     output_folder_path = Path(
-        r"C:\Users\user\scripts\manual podcasts",
+        r"C:\Users\user\scripts\manual podcasts\misc",
     )
     archive_folder_path = Path(
         r"C:\Users\user\dev\TTS\archive",
