@@ -5,10 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "gtts>=2.5.4",
+    "google-cloud-texttospeech>=2.33.0",
     "kittentts",
     "pandas>=2.3.2",
     "pyperclip>=1.9.0",
+    "python-dotenv>=1.2.1",
 ]
 
 [tool.uv.sources]
