@@ -3,12 +3,13 @@
 import io
 import itertools
 import logging
+import random
 import re
 import shutil
 import sys
 import time
 import wave
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from os import getenv
 from pathlib import Path
 from threading import Event, Thread
@@ -44,6 +45,11 @@ def initialize_usage_logger() -> logging.Logger:
     """Initialize and return a logger for TTS usage tracking."""
     usage_logger = logging.getLogger("tts_usage")
     usage_logger.setLevel(logging.INFO)
+    usage_logger.propagate = False
+
+    # Remove any existing handlers to prevent duplicates
+    for handler in usage_logger.handlers[:]:
+        usage_logger.removeHandler(handler)
 
     # Create handler for usage log file
     handler = logging.FileHandler("tts_usage.log")
@@ -67,7 +73,7 @@ def get_monthly_total() -> dict:
     Returns:
         dict: Contains 'total_chars', 'current_month', 'entries' (list of log entries)
     """
-    current_date = datetime.now(tz=timezone.utc)
+    current_date = datetime.now(tz=UTC)
     current_month = current_date.strftime("%Y-%m")
 
     total_chars = 0
@@ -78,18 +84,14 @@ def get_monthly_total() -> dict:
         with log_file.open() as f:
             for line in f:
                 if current_month in line:
-                    # Extract character count from log line
-                    # Format: YYYY-MM-DD HH:MM:SS | filename | voice | characters | running_total
-                    try:
-                        # Find the last number in the line (running total)
-                        numbers = re.findall(r"\d+(?:\.\d+)?", line)
-                        if numbers:
-                            total_chars = int(
-                                numbers[-2],
-                            )  # Second to last is char count
-                    except (IndexError, ValueError):
-                        pass
                     entries.append(line.strip())
+                    # Prefer parsing the explicit 'monthly total' field (running total)
+                    m = re.search(r"monthly total:\s*([\d,]+)", line, re.IGNORECASE)
+                    if m:
+                        try:
+                            total_chars = int(m.group(1).replace(",", ""))
+                        except ValueError:
+                            pass
 
     return {
         "total_chars": total_chars,
@@ -122,6 +124,9 @@ def log_usage(
         f"monthly total: {running_total:,}"
     )
     usage_logger.info(message)
+    # Ensure the log is written to disk
+    for handler in usage_logger.handlers:
+        handler.flush()
 
 
 def split_text_into_chunks(text: str, max_bytes: int = 4500) -> list[str]:
@@ -203,9 +208,37 @@ if __name__ == "__main__":
 
     # Load environment variables
     google_creds = getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    voice_name = getenv("TTS_VOICE_NAME", "en-US-Neural2-c")
+    default_voice_name = getenv("TTS_VOICE_NAME", "en-US-Neural2-c")
     tts_model = getenv("TTS_MODEL", "chirp-hd")
     language_code = getenv("TTS_LANGUAGE_CODE", "en-US")
+
+    # Static list of candidate voices. The env-provided voice is included
+    # first so it remains the default/fallback, then a few alternatives
+    # are available for random selection per-file.
+    VOICE_CHOICES = [
+        default_voice_name,
+        "en-US-Chirp3-HD-Algenib",
+        "en-US-Chirp3-HD-Algieba",
+        "en-US-Chirp3-HD-Alnilam",
+        "en-US-Chirp3-HD-Aoede",
+        "en-US-Chirp3-HD-Autonoe",
+        "en-US-Chirp3-HD-Callirrhoe",
+        "en-US-Chirp3-HD-Charon",
+        "en-US-Chirp3-HD-Despina",
+        "en-US-Chirp3-HD-Erinome",
+        "en-US-Chirp3-HD-Iapetus",
+        "en-US-Chirp3-HD-Laomedeia",
+        "en-US-Chirp3-HD-Leda",
+        "en-US-Chirp3-HD-Orus",
+        "en-US-Chirp3-HD-Puck",
+        "en-US-Chirp3-HD-Pulcherrima",
+        "en-US-Chirp3-HD-Rasalgethi",
+        "en-US-Chirp3-HD-Sadachbia",
+        "en-US-Chirp3-HD-Schedar",
+        "en-US-Chirp3-HD-Umbriel",
+        "en-US-Chirp3-HD-Vindemiatrix",
+        "en-US-Chirp3-HD-Zephyr",
+    ]
 
     # Validate credentials file exists
     if not google_creds or not Path(google_creds).exists():
@@ -248,6 +281,11 @@ if __name__ == "__main__":
                     if overwrite.lower() != "y":
                         continue
                 print(f"Starting {filename}")
+                # Output current month's total characters before API calls
+                monthly_data = get_monthly_total()
+                print(
+                    f"[{monthly_data['current_month']}] Total characters logged this month: {monthly_data['total_chars']:,} | {monthly_data['total_chars'] / 1000000:.0%}",
+                )
                 # thread for the spinner
                 should_spin = Event()
                 should_spin.set()
@@ -262,10 +300,13 @@ if __name__ == "__main__":
                     text_chunks = split_text_into_chunks(text)
                     audio_chunks = []
 
-                    # Prepare voice and audio config (reused for all chunks)
+                    # Choose a voice at random for this file and prepare
+                    # the voice + audio config (reused for all chunks).
+                    selected_voice = random.choice(VOICE_CHOICES)
+                    print(f"Using voice: {selected_voice}")
                     voice = texttospeech.VoiceSelectionParams(
                         language_code=language_code,
-                        name=voice_name,
+                        name=selected_voice,
                     )
 
                     audio_config = texttospeech.AudioConfig(
@@ -291,9 +332,9 @@ if __name__ == "__main__":
                     with output_file_path.open("wb") as out:
                         out.write(combined_audio)
 
-                    # Log usage
+                    # Log usage (include the chosen voice)
                     char_count = len(text)
-                    log_usage(usage_logger, filename, voice_name, char_count)
+                    log_usage(usage_logger, filename, selected_voice, char_count)
                     success = True
 
                 except FileNotFoundError as e:
@@ -323,3 +364,5 @@ if __name__ == "__main__":
         print("All files completed.")
     else:
         print("No text files found.")
+
+# TODO: add feature where it turns numbers (1,234) into words (one thousand, two hundred and thirty four)

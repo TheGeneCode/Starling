@@ -15,11 +15,16 @@ import pyperclip
 
 
 def run_article_reader() -> None:
-    subprocess.Popen(
-        [  # noqa: S607
-            "python",
+    venv_python = Path(r"C:\Users\user\dev\TTS\.venv\Scripts\python.exe")
+    subprocess.Popen(  # noqa: S603
+        [
+            str(venv_python),
             r"C:\Users\user\dev\TTS\articleReader.py",
         ],
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+        cwd=str(
+            Path(__file__).parent,
+        ),  # ensure tts_usage.log is created in project folder
     )
 
 
