@@ -364,5 +364,3 @@ if __name__ == "__main__":
         print("All files completed.")
     else:
         print("No text files found.")
-
-# TODO: add feature where it turns numbers (1,234) into words (one thousand, two hundred and thirty four)

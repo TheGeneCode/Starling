@@ -2030,6 +2030,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "google-cloud-texttospeech" },
     { name = "kittentts" },
+    { name = "num2words" },
     { name = "pandas" },
     { name = "pyperclip" },
     { name = "python-dotenv" },
@@ -2039,6 +2040,7 @@ dependencies = [
 requires-dist = [
     { name = "google-cloud-texttospeech", specifier = ">=2.33.0" },
     { name = "kittentts", url = "https://github.com/KittenML/KittenTTS/releases/download/0.1/kittentts-0.1.0-py3-none-any.whl" },
+    { name = "num2words", specifier = ">=0.5.13" },
     { name = "pandas", specifier = ">=2.3.2" },
     { name = "pyperclip", specifier = ">=1.9.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },

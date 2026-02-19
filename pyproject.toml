@@ -10,6 +10,7 @@ dependencies = [
     "pandas>=2.3.2",
     "pyperclip>=1.9.0",
     "python-dotenv>=1.2.1",
+    "num2words>=0.5.13",
 ]
 
 [tool.uv.sources]
