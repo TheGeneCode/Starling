@@ -15,12 +15,16 @@ from pathlib import Path
 from threading import Event, Thread
 
 from dotenv import load_dotenv
+from genekit.logging import configure_logging, dedicated_file_logger, get_logger
 from google.cloud import texttospeech
 
 # from kittentts import KittenTTS
 
 # Load environment variables from .env file
 load_dotenv()
+
+USAGE_LOG_PATH = Path("tts_usage.log")
+ERROR_LOG_PATH = Path("logfile.txt")
 
 
 def spinner(should_spin: Event) -> None:
@@ -37,33 +41,21 @@ def spinner(should_spin: Event) -> None:
 
 
 def remove_citations(text: str) -> str:
+    # Remove traditional citations (e.g., (Author, 2020))
     citations_regex = r"\([^\)]+(?:,\s*\d{4}(?:[a-zA-Z]?)?(?:,\s*p\.\s*\d+)?)+\)"
-    return re.sub(citations_regex, "", text)
+    text = re.sub(citations_regex, "", text)
+    # Remove footnote markers (e.g., [1], [2])
+    footnotes_regex = r"\[\d+\]"
+    return re.sub(footnotes_regex, "", text)
 
 
 def initialize_usage_logger() -> logging.Logger:
     """Initialize and return a logger for TTS usage tracking."""
-    usage_logger = logging.getLogger("tts_usage")
-    usage_logger.setLevel(logging.INFO)
-    usage_logger.propagate = False
-
-    # Remove any existing handlers to prevent duplicates
-    for handler in usage_logger.handlers[:]:
-        usage_logger.removeHandler(handler)
-
-    # Create handler for usage log file
-    handler = logging.FileHandler("tts_usage.log")
-    handler.setLevel(logging.INFO)
-
-    # Create formatter
-    formatter = logging.Formatter(
-        "%(asctime)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    return dedicated_file_logger(
+        "tts_usage",
+        USAGE_LOG_PATH,
+        fmt="%(asctime)s | %(message)s",
     )
-    handler.setFormatter(formatter)
-    usage_logger.addHandler(handler)
-
-    return usage_logger
 
 
 def get_monthly_total() -> dict:
@@ -78,10 +70,9 @@ def get_monthly_total() -> dict:
 
     total_chars = 0
     entries = []
-    log_file = Path("tts_usage.log")
 
-    if log_file.exists():
-        with log_file.open() as f:
+    if USAGE_LOG_PATH.exists():
+        with USAGE_LOG_PATH.open() as f:
             for line in f:
                 if current_month in line:
                     entries.append(line.strip())
@@ -198,12 +189,8 @@ def combine_audio_chunks(
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        filename="logfile.txt",
-        level=logging.ERROR,
-        format="%(asctime)s %(message)s",
-    )
-    logger = logging.getLogger(__name__)
+    configure_logging("ERROR", log_file=ERROR_LOG_PATH, console="none")
+    logger = get_logger(__name__)
     usage_logger = initialize_usage_logger()
 
     # Load environment variables

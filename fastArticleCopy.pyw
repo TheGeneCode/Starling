@@ -59,6 +59,7 @@ def convert_numbers_to_words(text: str) -> str:
     """
     Convert numbers to words in the text, handling currency scaling and formatting.
     """
+
     # 1. Handle "X million/billion" currency scaling
     # Pattern: $1,300 million -> 1.3 billion dollars
     def scale_currency(match):
@@ -111,8 +112,7 @@ def convert_numbers_to_words(text: str) -> str:
             val = float(val_str)
             words = num2words(val, to="currency", currency="USD")
             # Remove ", zero cents" if present
-            if words.endswith(", zero cents"):
-                words = words[:-12]
+            words = words.removesuffix(", zero cents")
             return words.replace(",", "")  # Remove commas in words
         except Exception:
             return match.group(0)
@@ -135,7 +135,9 @@ def convert_numbers_to_words(text: str) -> str:
 
     # Regex for X,XXX... (at least one comma)
     text = re.sub(
-        r"(?<![\$\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d])", number_to_words, text
+        r"(?<![\$\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d])",
+        number_to_words,
+        text,
     )
 
     return text

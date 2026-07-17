@@ -3,7 +3,7 @@ name = "tts"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "google-cloud-texttospeech>=2.33.0",
     "kittentts",
@@ -11,7 +11,9 @@ dependencies = [
     "pyperclip>=1.9.0",
     "python-dotenv>=1.2.1",
     "num2words>=0.5.13",
+    "genekit",
 ]
 
 [tool.uv.sources]
 kittentts = { url = "https://github.com/KittenML/KittenTTS/releases/download/0.1/kittentts-0.1.0-py3-none-any.whl" }
+genekit = { git = "https://github.com/TheGeneCode/genekit", subdirectory = "python", tag = "py-v0.1.0" }
