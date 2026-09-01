@@ -33,7 +33,7 @@ def spinner(should_spin: Event) -> None:
 
     Args: should_spin (Event): An Event object that controls whether the spinner animation should continue spinning or stop.
     """
-    chars = itertools.cycle("-\|/")  # noqa: W605
+    chars = itertools.cycle(r"-\|/")
     while should_spin.is_set():
         char = next(chars)
         print(f"Speaking... {char}", end="\r")
