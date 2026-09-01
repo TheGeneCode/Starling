@@ -1,11 +1,39 @@
+# Secrets and credentials — never commit these
+.env
+tts-service-account.json
+
+# Private personal utility, not part of Starling (purged from history in Phase 0)
+SGU.py
+
+# Logs
+logfile.txt
+tts_usage.log
+
+# Runtime working directories
 /input
 /archive
-.env
-logfile.txt
-tts-service-account.json
-tts_usage.log
+
+# Local planning documents
+/plans
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Packaging and build artifacts
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.venv/
+
+# Tool caches and coverage
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+
+# Editor and assistant tooling state
+.qodo/
