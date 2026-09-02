@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# No secrets are referenced anywhere in this workflow. genekit is a public repository
+# resolved over anonymous https://, so unlike MeadowLark there is no GENEKIT_TOKEN and
+# no `git config url.insteadOf` rewrite step. A pull request from a fork gets no access
+# to this repository's secrets, and must not need any.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest is the primary target and the only OS where iconbitmap() runs.
+        # ubuntu-latest guards the portable paths Phase 2 introduced and exercises the
+        # XDG branch of update_check.state_dir() for real. macOS is deliberately absent:
+        # its only distinct surface is the ~/Library/Application Support branch, already
+        # covered by a unit test that monkeypatches sys.platform.
+        os: [windows-latest, ubuntu-latest]
+        # The requires-python floor and the newest version in `classifiers`.
+        python-version: ["3.12", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # --locked fails if uv.lock and pyproject.toml have drifted, which is the only
+      # cheap way to catch a dependency edit that was never re-locked.
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Tests
+        run: uv run pytest -q
+
+      # `ruff format --check` is deliberately NOT run here: the tree has known
+      # pre-existing format drift (src/starling/voices.py, tests/conftest.py,
+      # tests/test_config.py, tests/test_voices.py) recorded in docs/plan-notes.md.
+      # Add it only after a dedicated whole-tree reformat commit.
+      - name: Lint
+        run: uv run ruff check
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # --no-sources proves the package builds without any uv-specific configuration,
+      # the way a standards-compliant build frontend would see it.
+      - name: Build sdist and wheel
+        run: uv build --no-sources
+
+      # The two invariants that only fail after publication if they are not asserted:
+      # the icon must be inside the wheel, and the genekit requirement must carry its
+      # git URL rather than a bare name that would be looked up on PyPI.
+      - name: Assert wheel contents and metadata
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          zf = zipfile.ZipFile(wheel)
+          names = zf.namelist()
+          assert "starling/resources/starling.ico" in names, names
+          meta_name = next(n for n in names if n.endswith(".dist-info/METADATA"))
+          reqs = [l for l in zf.read(meta_name).decode().splitlines()
+                  if l.startswith("Requires-Dist")]
+          assert any("genekit" in r and "git+https://" in r for r in reqs), reqs
+          print(f"{wheel}: OK")
+          for r in reqs:
+              print(" ", r)
+          PY
+
+      - name: Smoke-test the built wheel in a clean environment
+        run: uv run --isolated --no-project --with dist/*.whl -- starling --version

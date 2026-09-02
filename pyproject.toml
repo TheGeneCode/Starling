@@ -37,7 +37,11 @@ dependencies = [
     "pyperclip>=1.9.0",
     "python-dotenv>=1.2.1",
     "requests>=2.32.0",
-    "genekit",
+    # Direct reference, not `[tool.uv.sources]`: uv sources are development-only config
+    # and are ignored for transitive and direct-URL requirements, so a plain
+    # `Requires-Dist: genekit` in the wheel would be looked up on PyPI, where genekit
+    # does not exist. The URL must live here to survive into published metadata.
+    "genekit @ git+https://github.com/TheGeneCode/genekit@py-v0.1.0#subdirectory=python",
 ]
 
 [project.urls]
@@ -50,6 +54,7 @@ starling = "starling.cli:main"
 
 [dependency-groups]
 dev = [
+    "pillow>=11.0",
     "pytest>=8.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.5",
@@ -59,8 +64,27 @@ dev = [
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/starling"]
+# Belt-and-braces: hatchling already includes non-.py files under the package directory,
+# but this pins the intent so a future exclude rule cannot silently drop the icon.
+# The real guarantee is the wheel-contents assertion in .github/workflows/ci.yml.
+artifacts = ["src/starling/resources/*.ico"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src",
+    "tests",
+    "scripts",
+    "resources",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "pyproject.toml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -120,6 +144,4 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLC0415", "TRY002", "N818", "PT018", "N806", "RUF012", "N802", "N815"]
-
-[tool.uv.sources]
-genekit = { git = "https://github.com/TheGeneCode/genekit", subdirectory = "python", tag = "py-v0.1.0" }
+"scripts/**" = ["INP001"]  # standalone maintenance scripts, deliberately not a package

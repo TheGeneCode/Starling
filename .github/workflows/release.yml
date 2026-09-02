@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # ubuntu-latest, not windows-latest: the wheel is py3-none-any. MeadowLark's release
+    # job needs Windows only because it builds a PyInstaller exe and an Inno Setup
+    # installer; Starling has neither.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # A wheel whose version came only from the tag, while the committed pyproject.toml
+      # says something else, means `git checkout vX.Y.Z` does not reproduce the release.
+      # docs/RELEASING.md requires the bump commit before the tag; this enforces it.
+      # To relax: drop this step and let the stamp below be the sole source of version.
+      - name: Verify the tag matches the committed version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          FILE_VERSION="$(uv version --short)"
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME implies version $TAG_VERSION, but pyproject.toml says $FILE_VERSION."
+            echo "::error::Run the docs/RELEASING.md checklist: bump and commit the version, then tag."
+            exit 1
+          fi
+
+      - name: Verify CHANGELOG.md has an entry for this release
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "^## \[${TAG_VERSION}\]" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no '## [${TAG_VERSION}]' section."
+            exit 1
+          }
+
+      - name: Stamp version from tag
+        run: uv version "${GITHUB_REF_NAME#v}"
+
+      - name: Build sdist and wheel
+        run: uv build --no-sources
+
+      - name: Assert wheel contents and metadata
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          zf = zipfile.ZipFile(wheel)
+          names = zf.namelist()
+          assert "starling/resources/starling.ico" in names, names
+          meta_name = next(n for n in names if n.endswith(".dist-info/METADATA"))
+          reqs = [l for l in zf.read(meta_name).decode().splitlines()
+                  if l.startswith("Requires-Dist")]
+          assert any("genekit" in r and "git+https://" in r for r in reqs), reqs
+          print(f"{wheel}: OK")
+          PY
+
+      # The release gate: if genekit cannot be resolved from wheel metadata alone, this
+      # fails here rather than on a user's machine.
+      - name: Smoke-test the built wheel in a clean environment
+        run: uv run --isolated --no-project --with dist/*.whl -- starling --version
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
+          fail_on_unmatched_files: true

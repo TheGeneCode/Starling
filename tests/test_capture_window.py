@@ -12,38 +12,19 @@ from __future__ import annotations
 import contextlib
 import inspect
 import shutil
-import tkinter as tk
 from typing import TYPE_CHECKING
 
 import pytest
 
 import starling.capture
 from starling.capture import CaptureWindow, refine_text
-from starling.config import StarlingConfig, VoiceMode, ensure_directories
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
+    from starling.config import StarlingConfig
 
-@pytest.fixture
-def tmp_config(tmp_path: Path) -> StarlingConfig:
-    """A StarlingConfig whose every path lives under tmp_path, with dirs created."""  # noqa: D401
-    config = StarlingConfig(
-        home_dir=tmp_path,
-        input_dir=tmp_path / "input",
-        output_dir=tmp_path / "output",
-        archive_dir=tmp_path / "archive",
-        credentials_path=None,
-        language_code="en-US",
-        voice_mode=VoiceMode.FIXED,
-        voice_name="en-US-Chirp3-HD-Aoede",
-        voice_pool=("en-US-Chirp3-HD-Aoede",),
-        usage_log_path=tmp_path / "logs" / "usage.log",
-        error_log_path=tmp_path / "logs" / "errors.log",
-    )
-    ensure_directories(config)
-    return config
+tk = pytest.importorskip("tkinter")
 
 
 def _clipboard_sequence(*values: str) -> Callable[[], str]:

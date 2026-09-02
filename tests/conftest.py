@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import starling
+from starling.config import StarlingConfig, VoiceMode, ensure_directories
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -65,7 +66,7 @@ def tk_root() -> Iterator[object]:
     on a headless runner. Skipping keeps the GUI smoke tests honest on Windows and
     silent everywhere else, rather than flaky in both places.
     """  # noqa: D401
-    import tkinter as tk
+    tk = pytest.importorskip("tkinter")
 
     try:
         root = tk.Tk()
@@ -76,6 +77,26 @@ def tk_root() -> Iterator[object]:
         yield root
     finally:
         root.destroy()
+
+
+@pytest.fixture
+def tmp_config(tmp_path: Path) -> StarlingConfig:
+    """A StarlingConfig whose every path lives under tmp_path, with dirs created."""  # noqa: D401
+    config = StarlingConfig(
+        home_dir=tmp_path,
+        input_dir=tmp_path / "input",
+        output_dir=tmp_path / "output",
+        archive_dir=tmp_path / "archive",
+        credentials_path=None,
+        language_code="en-US",
+        voice_mode=VoiceMode.FIXED,
+        voice_name="en-US-Chirp3-HD-Aoede",
+        voice_pool=("en-US-Chirp3-HD-Aoede",),
+        usage_log_path=tmp_path / "logs" / "usage.log",
+        error_log_path=tmp_path / "logs" / "errors.log",
+    )
+    ensure_directories(config)
+    return config
 
 
 @pytest.fixture

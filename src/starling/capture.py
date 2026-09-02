@@ -7,10 +7,12 @@ to build the Tk window; nothing is created, polled, or written until then.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import subprocess
 import sys
 import tkinter as tk
+from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -31,6 +33,8 @@ POLL_INTERVAL_MS: Final = 100
 WINDOW_GEOMETRY: Final = "500x90"
 WINDOW_TITLE: Final = "Fast Article Copy"
 ENTRY_MAX_LENGTH: Final = 92
+ICON_PACKAGE: Final = "starling"
+ICON_RESOURCE: Final = ("resources", "starling.ico")
 
 
 def make_filename_ready(filename: str) -> str:
@@ -203,6 +207,25 @@ def update_entry(entry: tk.Entry, text: str) -> None:
     entry.config(state="disabled")
 
 
+def apply_window_icon(root: tk.Tk) -> None:
+    """
+    Give the window a title-bar and taskbar icon, or leave Tk's default in place.
+
+    ``iconbitmap`` is Windows-only -- it raises TclError on every other platform -- and
+    the packaged resource could be missing from an unusually built wheel. Neither is a
+    reason to refuse to open the capture window, so both are swallowed.
+
+    ``as_file`` is a no-op passthrough for a normal directory install, returning the real
+    path; it only materializes a temporary file for a zipimport, which Starling does not
+    use. Tk reads the .ico eagerly inside ``iconbitmap``, so the path only has to be
+    valid for the duration of the ``with`` block either way.
+    """
+    with contextlib.suppress(OSError, tk.TclError):
+        resource = files(ICON_PACKAGE).joinpath(*ICON_RESOURCE)
+        with as_file(resource) as icon_path:
+            root.iconbitmap(str(icon_path))
+
+
 class CaptureWindow:
     """
     The clipboard-capture window.
@@ -236,6 +259,7 @@ class CaptureWindow:
     def _build_ui(self) -> None:
         self.root.geometry(WINDOW_GEOMETRY)
         self.root.title(WINDOW_TITLE)
+        apply_window_icon(self.root)
         self.root.attributes("-topmost", True)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
