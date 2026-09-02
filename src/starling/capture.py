@@ -2,7 +2,11 @@
 The clipboard-capture window: watch the clipboard, refine what is copied, save articles.
 
 Importing this module has no side effects. Construct CaptureWindow (or call run_capture)
-to build the Tk window; nothing is created, polled, or written until then.
+to build the Tk window; nothing is created, polled, or written until then. tkinter itself
+is optional at import time -- it ships with the OS/interpreter rather than pip, so a
+uv-managed interpreter (CI's ubuntu-latest runners, for one) may not have it. ``tk`` is
+None in that case; only the GUI entry points (run_capture, CaptureWindow, update_entry,
+apply_window_icon) need it, and they fail with a clear message instead of at import time.
 """
 
 from __future__ import annotations
@@ -11,7 +15,6 @@ import contextlib
 import re
 import subprocess
 import sys
-import tkinter as tk
 from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -25,6 +28,11 @@ from starling.config import (
     ensure_directories,
     load_config,
 )
+
+try:
+    import tkinter as tk
+except ImportError:
+    tk = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -328,6 +336,12 @@ class CaptureWindow:
 
 def run_capture(config: StarlingConfig | None = None) -> int:
     """Open the capture window and block until it closes. Returns a process exit code."""
+    if tk is None:
+        print(
+            "Error: could not open the capture window. Starling's capture UI needs "
+            "tkinter, which is not installed for this Python interpreter.",
+        )
+        return 1
     config = config if config is not None else load_config()
     try:
         ensure_directories(config)

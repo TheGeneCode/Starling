@@ -98,6 +98,30 @@ def test_capture_module_imports_without_side_effects() -> None:
     assert result.returncode == 0, result.stderr.decode()
 
 
+def test_capture_module_imports_without_tkinter() -> None:
+    """Importing capture must not require tkinter -- CI's ubuntu-latest runner lacks it."""
+    script = (
+        "import builtins, sys\n"
+        "real_import = builtins.__import__\n"
+        "def blocked(name, *a, **k):\n"
+        "    if name == 'tkinter' or name.startswith('tkinter.'):\n"
+        "        raise ModuleNotFoundError(name)\n"
+        "    return real_import(name, *a, **k)\n"
+        "builtins.__import__ = blocked\n"
+        "import starling.capture\n"
+        "assert starling.capture.tk is None\n"
+        "assert starling.capture.run_capture() == 1\n"
+    )
+    # S603: script is a fixed literal built above, not user input.
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+
+
 def test_capture_exposes_public_surface() -> None:
     """Test that capture exposes CaptureWindow, run_capture, and the pure helpers."""
     capture = starling.capture
