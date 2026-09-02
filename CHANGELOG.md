@@ -42,9 +42,5 @@ installable command-line tool.
 
 - The `kittentts` and `pandas` dependencies, neither of which was used by shipping code.
 
-## [0.0.1] - 2026-09-02
-
-- Test release.
-
 [Unreleased]: https://github.com/TheGeneCode/Starling/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/TheGeneCode/Starling/releases/tag/v0.1.0

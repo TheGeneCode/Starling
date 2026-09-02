@@ -8,6 +8,10 @@ GitHub Release.
 The workflow **fails** if the tag and `pyproject.toml` disagree, or if `CHANGELOG.md`
 has no section for the version. Follow the steps in order and neither happens.
 
+`scripts\release.ps1` automates the checklist below (tests/lint, changelog rewrite,
+version bump, commit, tag, push) with a single confirmation prompt. Run it from the repo
+root: `.\scripts\release.ps1 -Version X.Y.Z`.
+
 ## Checklist
 
 1. **Green on `main`.**
