@@ -191,7 +191,7 @@ Google lists Standard and WaveNet under one SKU, and Neural2 and Polyglot under 
 
 > **The percentage Starling prints is measured against 1,000,000 characters.** That is exactly the Chirp 3: HD, Neural2, Studio and Polyglot allowance, so it is accurate for the default configuration — but if you switch to Standard or WaveNet, whose allowance is 4,000,000, it overstates how much of your free tier you have used.
 >
-> **Starling's log is a record, not a limit.** It cannot stop a charge. The only hard stop is on Google's side: set a [Cloud Billing budget alert](https://cloud.google.com/billing/docs/how-to/budgets) on the project, and if you want a true ceiling, cap the Text-to-Speech API's requests-per-minute quota in **APIs & Services → Text-to-Speech API → Quotas**.
+> **Starling's log is a record, not a limit.** It cannot stop a charge. The only hard stop is on Google's side: set a [Cloud Billing budget alert](https://cloud.google.com/billing/docs/how-to/budgets) on the project, and if you want a true ceiling, cap the Text-to-Speech API's requests-per-minute quota in **APIs & Services → Cloud Text-to-Speech API → Quotas & System Limits**.
 
 ---
 

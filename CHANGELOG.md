@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `CONTRIBUTING.md`, `SECURITY.md` (with a runbook for a leaked service-account key),
+  `CODE_OF_CONDUCT.md`, `GLOSSARY.md`, and a generated terminal-capture header image
+  with the scripts to regenerate it.
+
+### Changed
+
+- README rewritten for a general audience: corrected install instructions (the bare
+  PyPI name `starling` is an unrelated project; Starling installs from its git
+  repository), verified Google Cloud pricing and free-tier figures against Google's
+  pricing page, and removed the author-specific paths.
+- Coding standards consolidated into `.claude/CLAUDE.md`; `AGENTS.md`,
+  `.trae/rules/instructions.md` and the new `.github/instructions/instructions.md` now
+  point at it.
+
 ## [0.1.0] - 2026-09-02
 
 First public release. Starling began as a private collection of scripts and became an

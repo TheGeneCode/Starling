@@ -1,5 +1,43 @@
 # Notes for future plans
 
+## Carried forward from Phase 6d (community files, glossary, demo header)
+
+- **Any future maintenance script that runs `starling` and captures its output must
+  override *every* `STARLING_*` directory/log variable explicitly, not just
+  `STARLING_HOME`.** This repo's own `.env` sets `STARLING_OUTPUT_DIR` directly, which
+  takes precedence over `STARLING_HOME` alone (`config.py:load_config` — each directory
+  has its own env var, `STARLING_HOME` is only its fallback). `scripts/make_demo_png.py`
+  and `docs/DEMO.md`'s regeneration commands learned this the hard way: setting only
+  `STARLING_HOME` leaked a real personal path into a captured dry-run report.
+- **`$env:TEMP` must not be used as a fixture root for anything whose captured output
+  might ship in a doc or image.** It resolves under `C:\Users\<username>\...`, so its
+  own path leaks the real username. Use a plain neutral directory (e.g.
+  `C:\starling-demo`) on Windows instead; POSIX `/tmp` has no such issue.
+- **Capturing CLI stdout to a file on Windows needs `PYTHONUTF8=1`** (or equivalent).
+  Without it, Python encodes stdout per the console's active codepage (cp1252 observed
+  here), silently corrupting non-ASCII characters (`reader.py`'s em dashes) into bytes
+  that are not valid UTF-8 at all — the captured file then fails to even decode. Any
+  future script that captures `starling` output for a doc/demo must set this.
+- **`scripts/make_demo_fixture.py`'s 5,900-character `civic-primer` article is a single
+  run-on sentence with no internal punctuation, on purpose** — this exploits the same
+  pre-existing `split_text_into_chunks` quirk noted under "Carried forward from Phase 1"
+  (a lone sentence longer than the 4,500-byte cap is never sub-split). If that quirk is
+  ever fixed, this fixture's designed 1/1/3 chunk-count invariant breaks and
+  `docs/screenshot.png` must be regenerated — `tests/test_make_demo_fixture.py` pins
+  this invariant against the real `split_text_into_chunks`, so it will fail loudly
+  rather than silently.
+- **`scripts/make_demo_png.py`'s `render_session(scale=...)` is unvalidated** —
+  `scale <= 0` reaches Pillow's font loader and raises its own `ValueError` rather than
+  a guarded message. Harmless today (no CLI flag exposes `scale`; it's a hardcoded
+  keyword default), but worth a guard if a future phase ever exposes it as a `--scale`
+  flag. Documented and pinned by `test_render_session_non_positive_scale_raises_valueerror`.
+- **`_load_fonts`'s fallback is per-family, not per-face**: if a candidate family's
+  *regular* face fails to load, its *bold* sibling is never attempted — the whole
+  family is skipped and the next candidate family is tried. This is intentional
+  (confirmed and pinned by `test_load_fonts_falls_back_to_second_candidate_family`),
+  not an oversight; don't "fix" it into trying the bold face alone without a regular
+  match.
+
 ## Carried forward from Phase 5 (CI, release, icon)
 
 - **`uv tool install starling` / `uvx starling` do not work and never will as written.**

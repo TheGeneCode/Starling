@@ -15,7 +15,10 @@ import starling
 from starling.config import StarlingConfig, VoiceMode, ensure_directories
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from types import ModuleType
+
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
 
 @pytest.fixture
@@ -206,3 +209,28 @@ def captured_threads(monkeypatch: pytest.MonkeyPatch) -> list[MagicMock]:
 
     monkeypatch.setattr(uc.threading, "Thread", _factory)
     return created
+
+
+@pytest.fixture
+def import_script() -> Callable[[str], ModuleType]:
+    """
+    Load a module from scripts/ by filename.
+
+    scripts/ is deliberately not a package (see the ``INP001`` per-file-ignore in
+    pyproject.toml) so its maintenance scripts stay independent of the installed
+    ``starling`` package. That means they can't be imported with a normal
+    ``import`` statement in tests; load them from their file path instead.
+    """
+
+    def _load(filename: str) -> ModuleType:
+        import importlib.util
+
+        path = _SCRIPTS_DIR / filename
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    return _load
