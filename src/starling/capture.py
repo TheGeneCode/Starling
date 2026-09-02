@@ -20,7 +20,7 @@ def run_article_reader() -> None:
     subprocess.Popen(  # noqa: S603
         [
             str(venv_python),
-            r"C:\Users\user\dev\TTS\articleReader.py",
+            r"C:\Users\user\dev\TTS\src\starling\reader.py",
         ],
         creationflags=subprocess.CREATE_NEW_CONSOLE,
         cwd=str(
@@ -38,7 +38,7 @@ def on_closing() -> None:
 root = tk.Tk()
 root.geometry("500x90")
 root.title("Fast Article Copy")
-root.attributes("-topmost", True)  # noqa: FBT003
+root.attributes("-topmost", True)
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
 # Define variables to store clipboard content
@@ -56,9 +56,7 @@ def make_filename_ready(filename: str) -> str:
 
 
 def convert_numbers_to_words(text: str) -> str:
-    """
-    Convert numbers to words in the text, handling currency scaling and formatting.
-    """
+    """Convert numbers to words in the text, handling currency scaling and formatting."""
 
     # 1. Handle "X million/billion" currency scaling
     # Pattern: $1,300 million -> 1.3 billion dollars
@@ -134,13 +132,11 @@ def convert_numbers_to_words(text: str) -> str:
                 return match.group(0)
 
     # Regex for X,XXX... (at least one comma)
-    text = re.sub(
+    return re.sub(
         r"(?<![\$\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d])",
         number_to_words,
         text,
     )
-
-    return text
 
 
 def refine_text(text: str) -> str:

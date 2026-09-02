@@ -1,5 +1,6 @@
 """Processes all .txt files in the specified input directory by removing citations, converting the text to speech using Google Cloud TTS, and saving the resulting audio as .wav files in the output directory. Displays a spinner animation during processing, handles file overwrites with user confirmation, logs errors and usage, and moves processed files to an archive directory."""
 
+import contextlib
 import io
 import itertools
 import logging
@@ -79,10 +80,8 @@ def get_monthly_total() -> dict:
                     # Prefer parsing the explicit 'monthly total' field (running total)
                     m = re.search(r"monthly total:\s*([\d,]+)", line, re.IGNORECASE)
                     if m:
-                        try:
+                        with contextlib.suppress(ValueError):
                             total_chars = int(m.group(1).replace(",", ""))
-                        except ValueError:
-                            pass
 
     return {
         "total_chars": total_chars,
@@ -289,7 +288,7 @@ if __name__ == "__main__":
 
                     # Choose a voice at random for this file and prepare
                     # the voice + audio config (reused for all chunks).
-                    selected_voice = random.choice(VOICE_CHOICES)
+                    selected_voice = random.choice(VOICE_CHOICES)  # noqa: S311 - voice variety is cosmetic, not security
                     print(f"Using voice: {selected_voice}")
                     voice = texttospeech.VoiceSelectionParams(
                         language_code=language_code,

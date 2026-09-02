@@ -1,19 +1,121 @@
 [project]
-name = "tts"
+name = "starling"
 version = "0.1.0"
-description = "Add your description here"
+description = "Read saved articles aloud — turn article text into narrated audio with Google Cloud Text-to-Speech."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "TheGeneCode", email = "1274287+TheGeneCode@users.noreply.github.com" },
+]
+keywords = [
+    "text-to-speech",
+    "tts",
+    "google-cloud",
+    "audio",
+    "podcast",
+    "articles",
+    "accessibility",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Utilities",
+]
 dependencies = [
     "google-cloud-texttospeech>=2.33.0",
-    "kittentts",
-    "pandas>=2.3.2",
+    "num2words>=0.5.13",
     "pyperclip>=1.9.0",
     "python-dotenv>=1.2.1",
-    "num2words>=0.5.13",
     "genekit",
 ]
 
+[project.urls]
+Homepage = "https://github.com/TheGeneCode/Starling"
+Issues = "https://github.com/TheGeneCode/Starling/issues"
+Releases = "https://github.com/TheGeneCode/Starling/releases"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.5",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/starling"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/starling"]
+
+[tool.ruff]
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "T201",   # `print` found
+    "D103",   # Missing docstring in public function
+    "D102",   # Missing docstring in public method (same rationale as D103)
+    "D203",   # Incompatible with D211 (no-blank-line-before-class)
+    "D212",   # Multi-line docstring summary should start at the first line
+    "D413",   # Missing blank line after last section in docstring
+    "E501",   # Line too long
+    "ERA001", # Found commented-out code
+    "TD002",  # Missing author in TODO
+    "TD003",  # Missing issue link on the line following a TODO
+    "FIX002", # Line contains TODO
+    "COM812", # Trailing comma (conflicts with ruff formatter)
+    "S101",   # Use of assert — standard pytest pattern
+    "ANN001", # Missing type annotation for function argument
+    "ANN201", # Missing return type annotation for public function
+    "ANN204", # Missing return type annotation for special method
+    "RUF059", # Unpacked variable `_` never used — _ is a Python idiom
+    "ARG001", # Unused function argument — valid in callbacks/interfaces
+    "ARG002", # Unused method argument — valid in callbacks/interfaces
+    "FBT001", # Boolean-typed positional argument — valid API choice
+    "FBT002", # Boolean default positional argument — valid API choice
+    "SLF001", # Private member accessed — internal calls within same module
+    "ANN002", # Missing type annotation for *args
+    "ANN003", # Missing type annotation for **kwargs
+    "ANN202", # Missing return type for private function
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class
+    "D107",   # Missing docstring in __init__
+    "D417",   # Missing argument description in docstring
+    "TRY003", # Long exception messages outside exception class — common pattern
+    "EM101",  # String literal in exception — common pattern
+    "PLR2004", # Magic value used in comparison — too broad to enforce
+    "PLR0913", # Too many arguments in function definition
+    "PLR0911", # Too many return statements
+    "FBT003",  # Boolean positional value in function call
+    "ANN401",  # Dynamically typed `Any` — generic merges, test helpers
+    "BLE001",  # Blind `except Exception` — intentional defensive top-level catches
+    "TRY300",  # Consider moving to `else` block — style preference
+    "C901",    # Function too complex — acceptable for this app's size
+    "CPY001",  # Missing copyright notice — the GPL-3.0 LICENSE covers the whole tree.
+               # Ruff >= 0.16 promoted this rule out of preview, so `select = ["ALL"]`
+               # now flags every file in the repo.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLC0415", "TRY002", "N818", "PT018", "N806", "RUF012", "N802", "N815"]
+
 [tool.uv.sources]
-kittentts = { url = "https://github.com/KittenML/KittenTTS/releases/download/0.1/kittentts-0.1.0-py3-none-any.whl" }
 genekit = { git = "https://github.com/TheGeneCode/genekit", subdirectory = "python", tag = "py-v0.1.0" }
