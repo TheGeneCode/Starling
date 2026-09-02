@@ -50,25 +50,31 @@ pip install -r requirements.txt
 
 ### 3. Configure Environment Variables
 
-The `.env` file has been created for you with default settings:
+Copy `.env.example` to `.env` and set at least your credentials path:
 
 ```
-GOOGLE_APPLICATION_CREDENTIALS=C:\Users\user\dev\TTS\tts-service-account.json
-TTS_VOICE_NAME=en-US-Neural2-c
-TTS_MODEL=chirp-hd
-TTS_LANGUAGE_CODE=en-US
+STARLING_GOOGLE_CREDENTIALS=~/starling-service-account.json
 ```
+
+Every other setting is optional and defaults to a subdirectory of `~/Starling` — see
+`.env.example` for the full list (`STARLING_HOME`, `STARLING_INPUT_DIR`,
+`STARLING_OUTPUT_DIR`, `STARLING_ARCHIVE_DIR`, `STARLING_USAGE_LOG`, `STARLING_ERROR_LOG`,
+`STARLING_LANGUAGE_CODE`, `STARLING_VOICE_MODE`, `STARLING_VOICE_NAME`,
+`STARLING_VOICE_POOL`) with defaults and comments.
+
+> **Migration note:** the old `TTS_VOICE_NAME` / `TTS_LANGUAGE_CODE` variables were renamed
+> to `STARLING_VOICE_NAME` / `STARLING_LANGUAGE_CODE`; `TTS_MODEL` was removed (it was read
+> but never used). `GOOGLE_APPLICATION_CREDENTIALS` still works as a fallback if you don't
+> set `STARLING_GOOGLE_CREDENTIALS`.
 
 #### Optional: Change Voice Settings
 
-Available US English voices with lower/neutral pitch:
-- `en-US-Neural2-c` (female, lower pitch) - **[DEFAULT]**
-- `en-US-Neural2-e` (female, neutral)
-- `en-US-Neural2-f` (female, neutral)
-- `en-US-Neural2-i` (male, neutral)
-- `en-US-Neural2-j` (male, slightly lower pitch)
-
-To change the voice, edit the `.env` file and set `TTS_VOICE_NAME` to your preferred voice.
+By default Starling picks a different voice at random from a pool of 22
+`en-US-Chirp3-HD-*` voices for each file. Set `STARLING_VOICE_MODE=fixed` and
+`STARLING_VOICE_NAME=<voice>` to always use one voice instead, or set
+`STARLING_VOICE_POOL` to a comma-separated list to restrict the random pool. Voice families
+are priced differently on your Google Cloud account — see the pricing note in
+`.env.example` before switching families.
 
 ## Usage
 

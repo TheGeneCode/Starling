@@ -11,21 +11,25 @@ import sys
 import time
 import wave
 from datetime import UTC, datetime
-from os import getenv
 from pathlib import Path
 from threading import Event, Thread
 
-from dotenv import load_dotenv
 from genekit.logging import configure_logging, dedicated_file_logger, get_logger
 from google.cloud import texttospeech
 
+from starling.config import (
+    ConfigError,
+    VoiceMode,
+    ensure_directories,
+    load_config,
+    require_credentials,
+)
+
 # from kittentts import KittenTTS
 
-# Load environment variables from .env file
-load_dotenv()
-
-USAGE_LOG_PATH = Path("tts_usage.log")
-ERROR_LOG_PATH = Path("logfile.txt")
+CONFIG = load_config()
+USAGE_LOG_PATH = CONFIG.usage_log_path
+ERROR_LOG_PATH = CONFIG.error_log_path
 
 
 def spinner(should_spin: Event) -> None:
@@ -50,30 +54,40 @@ def remove_citations(text: str) -> str:
     return re.sub(footnotes_regex, "", text)
 
 
-def initialize_usage_logger() -> logging.Logger:
-    """Initialize and return a logger for TTS usage tracking."""
+def initialize_usage_logger(usage_log_path: Path | None = None) -> logging.Logger:
+    """
+    Initialize and return a logger for TTS usage tracking.
+
+    Args:
+        usage_log_path: Override for the usage log path. Defaults to USAGE_LOG_PATH.
+    """
+    path = usage_log_path if usage_log_path is not None else USAGE_LOG_PATH
     return dedicated_file_logger(
         "tts_usage",
-        USAGE_LOG_PATH,
+        path,
         fmt="%(asctime)s | %(message)s",
     )
 
 
-def get_monthly_total() -> dict:
+def get_monthly_total(usage_log_path: Path | None = None) -> dict:
     """
     Parse the usage log and return character count and details for current month.
+
+    Args:
+        usage_log_path: Override for the usage log path. Defaults to USAGE_LOG_PATH.
 
     Returns:
         dict: Contains 'total_chars', 'current_month', 'entries' (list of log entries)
     """
+    path = usage_log_path if usage_log_path is not None else USAGE_LOG_PATH
     current_date = datetime.now(tz=UTC)
     current_month = current_date.strftime("%Y-%m")
 
     total_chars = 0
     entries = []
 
-    if USAGE_LOG_PATH.exists():
-        with USAGE_LOG_PATH.open() as f:
+    if path.exists():
+        with path.open() as f:
             for line in f:
                 if current_month in line:
                     entries.append(line.strip())
@@ -188,68 +202,22 @@ def combine_audio_chunks(
 
 
 if __name__ == "__main__":
+    try:
+        ensure_directories(CONFIG)
+        credentials_path = require_credentials(CONFIG)
+    except ConfigError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+
     configure_logging("ERROR", log_file=ERROR_LOG_PATH, console="none")
     logger = get_logger(__name__)
     usage_logger = initialize_usage_logger()
 
-    # Load environment variables
-    google_creds = getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    default_voice_name = getenv("TTS_VOICE_NAME", "en-US-Neural2-c")
-    tts_model = getenv("TTS_MODEL", "chirp-hd")
-    language_code = getenv("TTS_LANGUAGE_CODE", "en-US")
+    language_code = CONFIG.language_code
+    output_folder_path = CONFIG.output_dir
+    archive_folder_path = CONFIG.archive_dir
+    input_folder_path = CONFIG.input_dir
 
-    # Static list of candidate voices. The env-provided voice is included
-    # first so it remains the default/fallback, then a few alternatives
-    # are available for random selection per-file.
-    VOICE_CHOICES = [
-        default_voice_name,
-        "en-US-Chirp3-HD-Algenib",
-        "en-US-Chirp3-HD-Algieba",
-        "en-US-Chirp3-HD-Alnilam",
-        "en-US-Chirp3-HD-Aoede",
-        "en-US-Chirp3-HD-Autonoe",
-        "en-US-Chirp3-HD-Callirrhoe",
-        "en-US-Chirp3-HD-Charon",
-        "en-US-Chirp3-HD-Despina",
-        "en-US-Chirp3-HD-Erinome",
-        "en-US-Chirp3-HD-Iapetus",
-        "en-US-Chirp3-HD-Laomedeia",
-        "en-US-Chirp3-HD-Leda",
-        "en-US-Chirp3-HD-Orus",
-        "en-US-Chirp3-HD-Puck",
-        "en-US-Chirp3-HD-Pulcherrima",
-        "en-US-Chirp3-HD-Rasalgethi",
-        "en-US-Chirp3-HD-Sadachbia",
-        "en-US-Chirp3-HD-Schedar",
-        "en-US-Chirp3-HD-Umbriel",
-        "en-US-Chirp3-HD-Vindemiatrix",
-        "en-US-Chirp3-HD-Zephyr",
-    ]
-
-    # Validate credentials file exists
-    if not google_creds or not Path(google_creds).exists():
-        print(
-            f"Error: GOOGLE_APPLICATION_CREDENTIALS not found. "
-            f"Expected at: {google_creds}",
-        )
-        print("Please follow setup instructions in README.md")
-        sys.exit(1)
-
-    output_folder_path = Path(
-        r"C:\Users\user\scripts\manual podcasts\misc",
-    )
-    archive_folder_path = Path(
-        r"C:\Users\user\dev\TTS\archive",
-    )
-    input_folder_path = Path(
-        r"C:\Users\user\dev\TTS\input",
-    )
-
-    # Ensure output and archive directories exist
-    output_folder_path.mkdir(parents=True, exist_ok=True)
-    archive_folder_path.mkdir(parents=True, exist_ok=True)
-
-    # Initialize Google Cloud TTS client
     tts_client = texttospeech.TextToSpeechClient()
 
     input_paths = list(input_folder_path.glob("*.txt"))
@@ -288,7 +256,10 @@ if __name__ == "__main__":
 
                     # Choose a voice at random for this file and prepare
                     # the voice + audio config (reused for all chunks).
-                    selected_voice = random.choice(VOICE_CHOICES)  # noqa: S311 - voice variety is cosmetic, not security
+                    if CONFIG.voice_mode is VoiceMode.FIXED:
+                        selected_voice = CONFIG.voice_name
+                    else:
+                        selected_voice = random.choice(CONFIG.voice_pool)  # noqa: S311 - voice variety is cosmetic, not security
                     print(f"Using voice: {selected_voice}")
                     voice = texttospeech.VoiceSelectionParams(
                         language_code=language_code,

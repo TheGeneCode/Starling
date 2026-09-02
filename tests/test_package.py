@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import ast
 import importlib.metadata
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 import starling
+import starling.config
 import starling.reader
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_package_imports() -> None:
@@ -50,11 +54,15 @@ def test_reader_exposes_pure_helpers() -> None:
         assert callable(helper), f"Not callable: {helper_name}"
 
 
-def test_reader_log_paths_are_cwd_relative(package_dir: Path) -> None:
-    """Test that reader log paths are CWD-relative, pinning pre-Phase-2 behavior."""
+def test_reader_log_paths_come_from_config() -> None:
+    """Test that reader's log paths are absolute and match a freshly loaded config."""
     reader = starling.reader
-    assert Path("tts_usage.log") == reader.USAGE_LOG_PATH
-    assert Path("logfile.txt") == reader.ERROR_LOG_PATH
+    config = starling.config.load_config()
+
+    assert config.usage_log_path == reader.USAGE_LOG_PATH
+    assert config.error_log_path == reader.ERROR_LOG_PATH
+    assert reader.USAGE_LOG_PATH.is_absolute()
+    assert reader.ERROR_LOG_PATH.is_absolute()
 
 
 # capture.py builds its Tkinter UI at import time, so it can only be parsed here.

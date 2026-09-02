@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -62,11 +63,12 @@ def capture_helpers(package_dir: Path) -> dict[str, object]:
     capture.py builds a Tkinter GUI and calls ``root.mainloop()`` at module level, so
     it must never be imported directly (see ``test_capture_module_parses_without_importing``
     in ``test_package.py``). This fixture parses the source with ``ast``, keeps only the
-    top-level import statements and the four pure helper function definitions
+    top-level import statements and the pure/mockable helper function definitions
     (``make_filename_ready``, ``convert_numbers_to_words``, ``refine_text``,
-    ``shorten_text``), and execs that reduced module into a fresh namespace. This gives
-    real behavioral coverage of the text-processing logic without ever constructing a
-    GUI window or touching the clipboard.
+    ``shorten_text``, ``run_article_reader``), and execs that reduced module into a fresh
+    namespace. This gives real behavioral coverage of the text-processing logic (and, for
+    ``run_article_reader``, its subprocess-launch wiring via a mocked ``subprocess.Popen``)
+    without ever constructing a GUI window or touching the clipboard.
     """
     capture_path = package_dir / "capture.py"
     source = capture_path.read_text(encoding="utf-8")
@@ -77,6 +79,7 @@ def capture_helpers(package_dir: Path) -> dict[str, object]:
         "convert_numbers_to_words",
         "refine_text",
         "shorten_text",
+        "run_article_reader",
     }
     nodes = [
         node
@@ -93,3 +96,34 @@ def capture_helpers(package_dir: Path) -> dict[str, object]:
         namespace,
     )
     return namespace
+
+
+@pytest.fixture
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Remove every STARLING_* and Google credential variable for the duration of a test.
+
+    The developer's own shell and .env both define some of these; without this fixture a
+    default-resolution test would pass or fail depending on whose machine it ran on.
+    """
+    for key in list(os.environ):
+        if key.startswith("STARLING_"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+
+
+@pytest.fixture
+def fake_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Point Path.home() at a temporary directory so default paths are assertable."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: home))
+    return home
+
+
+@pytest.fixture
+def fake_credentials(tmp_path: Path) -> Path:
+    """Write a file that stands in for a service-account JSON key. Never a real key."""
+    key = tmp_path / "service-account.json"
+    key.write_text('{"type": "service_account"}', encoding="utf-8")
+    return key

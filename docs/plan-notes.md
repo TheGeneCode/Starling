@@ -51,3 +51,36 @@ Carried forward from Phase 0 (`plans/starling-launch/00-history-and-rename.md`),
   discard-line matching requires an exact full-line match, so boilerplate variants like
   `"For more info"` don't trigger the `"For more"` cutoff. Whichever phase next touches these
   functions (Phase 2 or 3) should decide whether to fix or intentionally keep.
+
+## Carried forward from Phase 2a
+
+- **`reader.py` now runs on this machine.** `src/starling/config.py` replaced every
+  hardcoded path; the manual smoke test (`uv run python -m starling.reader` on an empty
+  `~/Starling/input`) now prints "No text files found." and exits 0, confirmed live. The
+  `PermissionError`-on-`mkdir` regression noted under "Carried forward from Phase 1" above
+  is resolved — a later phase should not treat a `reader.py` crash as pre-existing anymore.
+- **`load_config()` never raises for missing credentials; `require_credentials()` does.**
+  This split is deliberate so `capture.py` can import config at module scope without
+  refusing to open its clipboard-capture window on a machine with no Google key configured
+  yet. `02b-voices.md` should keep this split — voice listing/validation needs credentials,
+  config loading does not.
+- **`require_credentials()` exports `GOOGLE_APPLICATION_CREDENTIALS` into `os.environ`** as
+  a side effect, once, on success — this is load-bearing: `google.auth`'s ADC chain only
+  reads that exact variable name, so a config that only sets `STARLING_GOOGLE_CREDENTIALS`
+  would otherwise fail at `TextToSpeechClient()` construction despite validating cleanly.
+  Any future code path that constructs a TTS client must call `require_credentials()` first
+  (not just read `config.credentials_path`).
+- **`STARLING_VOICE_POOL` blank vs. malformed are different outcomes on purpose.** Empty or
+  whitespace-only falls back to `DEFAULT_VOICE_POOL` silently; a value that parses to zero
+  names (e.g. `",,,"`) raises `ConfigError`. `02b-voices.md`'s validation step should not
+  collapse this distinction — silently substituting a pool the user didn't choose is a
+  billing surprise, per the plan's Decisions table.
+- **Old `TTS_*` env var names are fully retired, no compatibility shim.** `TTS_MODEL` is
+  gone entirely (it was read but never used pre-Phase-2a). Nothing in the codebase reads
+  the old names anymore.
+- **QA (`qa-boundary-tester`, Phase 2a) added 15 tests** (89 → 104) covering
+  `resolve_credentials_path()` precedence/whitespace/tilde in isolation, `parse_voice_pool()`
+  as a pure function, `initialize_usage_logger`/`get_monthly_total`'s new optional
+  `usage_log_path` override parameter, and `capture.py::run_article_reader()`'s
+  platform-gated `creationflags` and exact subprocess argv (previously zero coverage). No
+  defects found — all gaps were coverage-only.

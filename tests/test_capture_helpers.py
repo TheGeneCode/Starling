@@ -11,6 +11,8 @@ exercised here without ever constructing a GUI window.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -213,3 +215,64 @@ def test_refine_text_no_discard_markers_present(
     """Test that text without any discard marker or footnote passes through unchanged."""
     text = "Plain text with nothing special.\nSecond line.\n"
     assert capture_helpers["refine_text"](text) == text
+
+
+# ---------------------------------------------------------------------------
+# run_article_reader
+# ---------------------------------------------------------------------------
+#
+# capture.py no longer hardcodes a venv python path or this project's absolute
+# file path (Phase 2a); it launches `[sys.executable, "-m", "starling.reader"]`
+# with CREATE_NEW_CONSOLE gated behind sys.platform == "win32" (that constant
+# doesn't exist off Windows, so passing it unconditionally would crash on
+# Linux/macOS). These were previously untested. `subprocess` and `sys` in the
+# reduced namespace are the *same module objects* imported at test-module
+# scope, since ast-exec'ing `import subprocess`/`import sys` binds the real
+# modules -- so monkeypatching them here is visible inside run_article_reader.
+
+
+def test_run_article_reader_windows_uses_new_console_flag_and_module_invocation(
+    capture_helpers: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test the win32 branch: CREATE_NEW_CONSOLE flag and exact argv."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    captured: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **kwargs: Any) -> None:
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    capture_helpers["run_article_reader"]()
+
+    assert captured["argv"] == [sys.executable, "-m", "starling.reader"]
+    assert captured["kwargs"] == {
+        "creationflags": subprocess.CREATE_NEW_CONSOLE,
+    }
+
+
+def test_run_article_reader_non_windows_uses_zero_creationflags(
+    capture_helpers: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Test the non-Windows branch: creationflags=0, no reference to the Windows-only constant.
+
+    Boundary: `subprocess.CREATE_NEW_CONSOLE` genuinely does not exist on
+    Linux/macOS, so evaluating that attribute unconditionally would raise
+    AttributeError on those platforms -- this pins that the ternary short-
+    circuits before ever touching it.
+    """
+    monkeypatch.setattr(sys, "platform", "linux")
+    captured: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **kwargs: Any) -> None:
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    capture_helpers["run_article_reader"]()
+
+    assert captured["argv"] == [sys.executable, "-m", "starling.reader"]
+    assert captured["kwargs"] == {"creationflags": 0}

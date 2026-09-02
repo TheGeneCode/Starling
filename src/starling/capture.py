@@ -8,24 +8,23 @@ It also launches an external article reader script upon window close.
 
 import re
 import subprocess
+import sys
 import tkinter as tk
-from pathlib import Path
 
 import pyperclip
 from num2words import num2words
 
+from starling.config import ensure_directories, load_config
+
+CONFIG = load_config()
+
 
 def run_article_reader() -> None:
-    venv_python = Path(r"C:\Users\user\dev\TTS\.venv\Scripts\python.exe")
-    subprocess.Popen(  # noqa: S603
-        [
-            str(venv_python),
-            r"C:\Users\user\dev\TTS\src\starling\reader.py",
-        ],
-        creationflags=subprocess.CREATE_NEW_CONSOLE,
-        cwd=str(
-            Path(__file__).parent,
-        ),  # ensure tts_usage.log is created in project folder
+    """Launch the reader in a new process using the interpreter running this app."""
+    creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+    subprocess.Popen(
+        [sys.executable, "-m", "starling.reader"],
+        creationflags=creationflags,
     )
 
 
@@ -47,7 +46,8 @@ previous_clipboard = (
 )  # set to clipboard at launch so initial contents aren't copied
 var1 = tk.StringVar()
 var2 = tk.StringVar()
-output_folder_path = r"C:\Users\user\dev\TTS\input"
+output_folder_path = CONFIG.input_dir
+ensure_directories(CONFIG)
 
 
 def make_filename_ready(filename: str) -> str:
@@ -214,7 +214,7 @@ def check_clipboard() -> None:
                 else (var2.get(), var1.get())
             )
             short_text = make_filename_ready(short_text)
-            output_file_path = Path(output_folder_path) / f"{short_text}.txt"
+            output_file_path = output_folder_path / f"{short_text}.txt"
             with output_file_path.open("w", encoding="utf-8") as f:
                 f.write(long_text)
             # Clear variables

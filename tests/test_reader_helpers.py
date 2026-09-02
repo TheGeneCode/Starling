@@ -259,6 +259,66 @@ def test_get_monthly_total_malformed_total_field_is_suppressed(
     assert len(result["entries"]) == 1
 
 
+def test_get_monthly_total_explicit_path_overrides_module_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Test that an explicit usage_log_path argument is read instead of USAGE_LOG_PATH.
+
+    The module attribute is pointed at a log claiming a large running total; the
+    explicit argument points at a different (empty) log. If the explicit
+    argument were ignored, this would incorrectly report the module-default log's
+    total instead of zero.
+    """
+    month = _current_month()
+    module_default_path = tmp_path / "module_default.log"
+    module_default_path.write_text(
+        f"{month}-01 | old.txt | voice: v1 | characters: 9,999 | monthly total: 9,999\n",
+        encoding="utf-8",
+    )
+    explicit_path = tmp_path / "explicit.log"
+    monkeypatch.setattr(reader, "USAGE_LOG_PATH", module_default_path)
+
+    result = reader.get_monthly_total(usage_log_path=explicit_path)
+
+    assert result["total_chars"] == 0
+    assert result["entries"] == []
+
+
+def test_get_monthly_total_resolves_module_attr_at_call_time_not_import_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Test that USAGE_LOG_PATH is read fresh on every call, not frozen at import.
+
+    This is the specific regression the Phase 2a handoff calls out: resolving the
+    default *inside* the function body (rather than as
+    ``usage_log_path: Path = USAGE_LOG_PATH`` in the signature) means two calls in
+    the same process, with the module attribute changed in between, must each see
+    the value current at call time.
+    """
+    month = _current_month()
+    first_log = tmp_path / "first.log"
+    first_log.write_text(
+        f"{month}-01 | a.txt | voice: v1 | characters: 100 | monthly total: 100\n",
+        encoding="utf-8",
+    )
+    second_log = tmp_path / "second.log"
+    second_log.write_text(
+        f"{month}-01 | b.txt | voice: v1 | characters: 200 | monthly total: 200\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(reader, "USAGE_LOG_PATH", first_log)
+    first_result = reader.get_monthly_total()
+
+    monkeypatch.setattr(reader, "USAGE_LOG_PATH", second_log)
+    second_result = reader.get_monthly_total()
+
+    assert first_result["total_chars"] == 100
+    assert second_result["total_chars"] == 200
+
+
 # ---------------------------------------------------------------------------
 # log_usage
 # ---------------------------------------------------------------------------
@@ -329,6 +389,32 @@ def test_initialize_usage_logger_writes_to_usage_log_path(
 
     assert log_path.exists()
     assert "probe message" in log_path.read_text(encoding="utf-8")
+
+
+def test_initialize_usage_logger_explicit_path_overrides_module_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolated_logging: None
+) -> None:
+    """
+    Test that an explicit usage_log_path argument wins over USAGE_LOG_PATH.
+
+    Phase 2a resolves the parameter default *inside* the function body
+    (``path = usage_log_path if usage_log_path is not None else USAGE_LOG_PATH``)
+    rather than as a frozen default argument, specifically so this call-site
+    override still works. Point the module attribute at one file and pass a
+    different path explicitly; only the explicit path should receive the write.
+    """
+    module_default_path = tmp_path / "module_default.log"
+    explicit_path = tmp_path / "explicit_override.log"
+    monkeypatch.setattr(reader, "USAGE_LOG_PATH", module_default_path)
+
+    usage_logger = reader.initialize_usage_logger(usage_log_path=explicit_path)
+    usage_logger.info("goes to explicit path")
+    for handler in usage_logger.handlers:
+        handler.flush()
+
+    assert explicit_path.exists()
+    assert "goes to explicit path" in explicit_path.read_text(encoding="utf-8")
+    assert not module_default_path.exists()
 
 
 # ---------------------------------------------------------------------------
