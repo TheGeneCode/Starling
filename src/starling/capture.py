@@ -1,53 +1,36 @@
 """
-A clipboard monitoring Tkinter application for quickly capturing and saving article text.
+The clipboard-capture window: watch the clipboard, refine what is copied, save articles.
 
-This script creates a GUI window that monitors clipboard changes, refines and stores up to two copied texts,
-and automatically saves the longer text to a file in a specified folder when both slots are filled.
-It also launches an external article reader script upon window close.
+Importing this module has no side effects. Construct CaptureWindow (or call run_capture)
+to build the Tk window; nothing is created, polled, or written until then.
 """
+
+from __future__ import annotations
 
 import re
 import subprocess
 import sys
 import tkinter as tk
+from pathlib import Path
+from typing import TYPE_CHECKING, Final
 
 import pyperclip
 from num2words import num2words
 
-from starling.config import ensure_directories, load_config
+from starling.config import (
+    ConfigError,
+    StarlingConfig,
+    ensure_directories,
+    load_config,
+)
 
-CONFIG = load_config()
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-
-def run_article_reader() -> None:
-    """Launch the reader in a new process using the interpreter running this app."""
-    creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
-    subprocess.Popen(
-        [sys.executable, "-m", "starling.reader"],
-        creationflags=creationflags,
-    )
-
-
-def on_closing() -> None:
-    run_article_reader()
-    root.destroy()
-
-
-# Create the main window
-root = tk.Tk()
-root.geometry("500x90")
-root.title("Fast Article Copy")
-root.attributes("-topmost", True)
-root.protocol("WM_DELETE_WINDOW", on_closing)
-
-# Define variables to store clipboard content
-previous_clipboard = (
-    pyperclip.paste()
-)  # set to clipboard at launch so initial contents aren't copied
-var1 = tk.StringVar()
-var2 = tk.StringVar()
-output_folder_path = CONFIG.input_dir
-ensure_directories(CONFIG)
+POLL_INTERVAL_MS: Final = 100
+WINDOW_GEOMETRY: Final = "500x90"
+WINDOW_TITLE: Final = "Fast Article Copy"
+ENTRY_MAX_LENGTH: Final = 92
 
 
 def make_filename_ready(filename: str) -> str:
@@ -164,7 +147,7 @@ def refine_text(text: str) -> str:
     return text
 
 
-def shorten_text(text: str, max_length: int = 92) -> str:
+def shorten_text(text: str, max_length: int = ENTRY_MAX_LENGTH) -> str:
     """
     Shorten text to a maximum length, adding ellipsis if truncated.
 
@@ -180,63 +163,164 @@ def shorten_text(text: str, max_length: int = 92) -> str:
     return text[: max_length - 3] + "..."
 
 
+def console_executable() -> str:
+    """
+    Return an interpreter that owns a console.
+
+    Launching the reader from pythonw.exe (the historical .pyw entry point) gives it
+    CREATE_NEW_CONSOLE but no console to write to, so the spinner and the overwrite
+    prompt go nowhere. Swap in the sibling python.exe when there is one.
+    """
+    executable = Path(sys.executable)
+    if sys.platform == "win32" and executable.name.lower() == "pythonw.exe":
+        candidate = executable.with_name("python.exe")
+        if candidate.exists():
+            return str(candidate)
+    return sys.executable
+
+
+def run_article_reader() -> None:
+    """Launch the reader in a new process using the interpreter running this app."""
+    creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+    # S603: the argv is this app's own interpreter and module name, not user input.
+    subprocess.Popen(  # noqa: S603
+        [console_executable(), "-m", "starling", "read"],
+        creationflags=creationflags,
+    )
+
+
 def update_entry(entry: tk.Entry, text: str) -> None:
     """
-    Update the content of an entry widget.
+    Update the content of a disabled entry widget.
 
     Args:
         entry: The entry widget to update.
         text: The text to insert into the entry.
     """
-    entry.config(state="normal")  # Allow editing temporarily
-    entry.delete(0, tk.END)  # Clear existing content
-    entry.insert(0, shorten_text(text))  # Insert new content
-    entry.config(state="disabled")  # Disable editing again
+    entry.config(state="normal")
+    entry.delete(0, tk.END)
+    entry.insert(0, shorten_text(text))
+    entry.config(state="disabled")
 
 
-def check_clipboard() -> None:
-    global previous_clipboard  # Access global variable  # noqa: PLW0603
-    text = pyperclip.paste()  # Get clipboard content
-    if text and text != previous_clipboard:  # Check for new content
-        previous_clipboard = text  # Update previous content
+class CaptureWindow:
+    """
+    The clipboard-capture window.
+
+    Constructing this builds Tk widgets; `run()` starts polling and blocks in the
+    mainloop. `poll_clipboard_once()` is the whole state machine and is callable
+    directly, so the save behavior is testable without a mainloop.
+    """
+
+    def __init__(
+        self,
+        config: StarlingConfig,
+        *,
+        root: tk.Tk | None = None,
+        poll_interval_ms: int = POLL_INTERVAL_MS,
+        on_close: Callable[[], None] = run_article_reader,
+        clipboard_read: Callable[[], str] = pyperclip.paste,
+    ) -> None:
+        self.config = config
+        self.output_dir = config.input_dir
+        self.poll_interval_ms = poll_interval_ms
+        self.on_close = on_close
+        self.clipboard_read = clipboard_read
+        # Seed from the clipboard at launch so its existing contents aren't captured.
+        self.previous_clipboard = clipboard_read()
+        self.first_text = ""
+        self.second_text = ""
+        self.root = tk.Tk() if root is None else root
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        self.root.geometry(WINDOW_GEOMETRY)
+        self.root.title(WINDOW_TITLE)
+        self.root.attributes("-topmost", True)
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+
+        tk.Label(self.root, text="Variable 1:").pack(anchor="w")
+        self.entry1 = tk.Entry(self.root, state="disabled")
+        self.entry1.pack(anchor="w", fill=tk.X)
+
+        tk.Label(self.root, text="Variable 2:").pack(anchor="w")
+        self.entry2 = tk.Entry(self.root, state="disabled")
+        self.entry2.pack(anchor="w", fill=tk.X)
+
+    def run(self) -> None:
+        """Start polling and block until the window is closed."""
+        self.check_clipboard()
+        self.root.mainloop()
+
+    def check_clipboard(self) -> None:
+        """Poll once, then reschedule. This is the only method that touches the event loop."""
+        self.poll_clipboard_once()
+        self.root.after(self.poll_interval_ms, self.check_clipboard)
+
+    def poll_clipboard_once(self) -> Path | None:
+        """
+        Consume one clipboard change. Returns the article file written, if a pair completed.
+
+        The first new clipboard text fills slot 1, the second fills slot 2. Once both are
+        filled the longer one is saved as the article body and the shorter one, made
+        filename-safe, becomes the filename; both slots are then cleared.
+        """
+        text = self.clipboard_read()
+        if not text or text == self.previous_clipboard:
+            return None
+        self.previous_clipboard = text
+
         text = refine_text(text)
-        if not var1.get():
-            var1.set(text)
-            update_entry(entry1, text)
-        elif not var2.get():
-            var2.set(text)
-            update_entry(entry2, text)
-        # Check if both variables have text and save the longer one
-        if var1.get() and var2.get():
-            long_text, short_text = (
-                (var1.get(), var2.get())
-                if len(var1.get()) > len(var2.get())
-                else (var2.get(), var1.get())
-            )
-            short_text = make_filename_ready(short_text)
-            output_file_path = output_folder_path / f"{short_text}.txt"
-            with output_file_path.open("w", encoding="utf-8") as f:
-                f.write(long_text)
-            # Clear variables
-            var1.set("")
-            var2.set("")
-            update_entry(entry1, "")
-            update_entry(entry2, "")
-    # Schedule continuous checking for clipboard changes
-    root.after(100, check_clipboard)  # Check every 100 milliseconds
+        if not self.first_text:
+            self.first_text = text
+            update_entry(self.entry1, text)
+        elif not self.second_text:
+            self.second_text = text
+            update_entry(self.entry2, text)
+
+        if self.first_text and self.second_text:
+            return self._save_pair()
+        return None
+
+    def _save_pair(self) -> Path:
+        long_text, short_text = (
+            (self.first_text, self.second_text)
+            if len(self.first_text) > len(self.second_text)
+            else (self.second_text, self.first_text)
+        )
+        output_path = self.output_dir / f"{make_filename_ready(short_text)}.txt"
+        output_path.write_text(long_text, encoding="utf-8")
+        self.first_text = ""
+        self.second_text = ""
+        update_entry(self.entry1, "")
+        update_entry(self.entry2, "")
+        return output_path
+
+    def close(self) -> None:
+        """WM_DELETE_WINDOW handler: launch the reader, then tear the window down."""
+        self.on_close()
+        self.root.destroy()
 
 
-# Create labels and entry fields for variables
-label1 = tk.Label(root, text="Variable 1:")
-label1.pack(anchor="w")
-entry1 = tk.Entry(root, textvariable=shorten_text(var1.get()), state="disabled")
-entry1.pack(anchor="w", fill=tk.X)
+def run_capture(config: StarlingConfig | None = None) -> int:
+    """Open the capture window and block until it closes. Returns a process exit code."""
+    config = config if config is not None else load_config()
+    try:
+        ensure_directories(config)
+    except ConfigError as exc:
+        print(f"Error: {exc}")
+        return 1
+    try:
+        window = CaptureWindow(config)
+    except tk.TclError as exc:
+        print(
+            "Error: could not open the capture window. Starling's capture UI needs a "
+            f"graphical display: {exc}",
+        )
+        return 1
+    window.run()
+    return 0
 
-label2 = tk.Label(root, text="Variable 2:")
-label2.pack(anchor="w")
-entry2 = tk.Entry(root, textvariable=shorten_text(var2.get()), state="disabled")
-entry2.pack(anchor="w", fill=tk.X)
 
-# Keep the window open
-check_clipboard()
-root.mainloop()
+if __name__ == "__main__":
+    sys.exit(run_capture())

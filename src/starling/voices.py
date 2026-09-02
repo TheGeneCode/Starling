@@ -132,8 +132,7 @@ def validate_voice_names(
                 line += f" Did you mean: {', '.join(matches)}?"
             lines.append(line)
         lines.append(
-            "Run `python -m starling.voices` (or `starling voices` once installed) "
-            "to list every voice Google offers for this language.",
+            "Run `starling voices` to list every voice Google offers for this language.",
         )
         msg = "\n".join(lines)
         raise UnknownVoiceError(msg)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import logging
 import os
 from pathlib import Path
@@ -58,46 +57,25 @@ def package_dir() -> Path:
 
 
 @pytest.fixture
-def capture_helpers(package_dir: Path) -> dict[str, object]:
+def tk_root() -> Iterator[object]:
     """
-    Exec capture.py's pure text-processing helpers in isolation, without importing it.
+    A real Tk root, or a skip on a machine with no display.
 
-    capture.py builds a Tkinter GUI and calls ``root.mainloop()`` at module level, so
-    it must never be imported directly (see ``test_capture_module_parses_without_importing``
-    in ``test_package.py``). This fixture parses the source with ``ast``, keeps only the
-    top-level import statements and the pure/mockable helper function definitions
-    (``make_filename_ready``, ``convert_numbers_to_words``, ``refine_text``,
-    ``shorten_text``, ``run_article_reader``), and execs that reduced module into a fresh
-    namespace. This gives real behavioral coverage of the text-processing logic (and, for
-    ``run_article_reader``, its subprocess-launch wiring via a mocked ``subprocess.Popen``)
-    without ever constructing a GUI window or touching the clipboard.
-    """
-    capture_path = package_dir / "capture.py"
-    source = capture_path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
+    tkinter raises TclError ("no display name and no $DISPLAY environment variable")
+    on a headless runner. Skipping keeps the GUI smoke tests honest on Windows and
+    silent everywhere else, rather than flaky in both places.
+    """  # noqa: D401
+    import tkinter as tk
 
-    wanted_functions = {
-        "make_filename_ready",
-        "convert_numbers_to_words",
-        "refine_text",
-        "shorten_text",
-        "run_article_reader",
-    }
-    nodes = [
-        node
-        for node in tree.body
-        if isinstance(node, (ast.Import, ast.ImportFrom))
-        or (isinstance(node, ast.FunctionDef) and node.name in wanted_functions)
-    ]
-    reduced_module = ast.Module(body=nodes, type_ignores=[])
-    ast.fix_missing_locations(reduced_module)
-
-    namespace: dict[str, object] = {}
-    exec(  # noqa: S102 - controlled exec of vetted, pre-parsed source; not user input
-        compile(reduced_module, filename=str(capture_path), mode="exec"),
-        namespace,
-    )
-    return namespace
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on the runner
+        pytest.skip(f"no display available for Tk: {exc}")
+    root.withdraw()
+    try:
+        yield root
+    finally:
+        root.destroy()
 
 
 @pytest.fixture

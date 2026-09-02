@@ -1,5 +1,38 @@
 # Notes for future plans
 
+## Carried forward from Phase 3c
+
+- **The `starling` console-script entry point is live** (`[project.scripts]` in
+  `pyproject.toml`, `starling.cli:main`), and `python -m starling` also works via
+  `src/starling/__main__.py`. Phase 4 (update check) and Phase 5 (CI/release) can rely on
+  both invocation forms existing; no more `python -m starling.reader`/`.voices` anywhere.
+- **Lazy-import-inside-handler is the established pattern for subcommand-specific heavy
+  deps.** `cli.py`'s `_handle_capture`/`_handle_voices` import `starling.capture`/
+  `starling.voices` only inside the handler function, not at module top, so `starling read`
+  never loads tkinter and `starling usage` never loads the texttospeech client chain. A
+  test (`test_read_does_not_import_tkinter`, subprocess-based) pins this. Any new
+  subcommand with its own heavy/optional dependency (e.g. a Phase 4 update-check HTTP
+  client) should follow the same pattern rather than importing at module scope.
+- **`apply_default_command` and `SUBCOMMANDS`/`TOP_LEVEL_FLAGS` in `cli.py` need updating
+  together if a subcommand or top-level flag is ever added** — they are the two lists that
+  decide whether a bare-flag invocation like `starling --foo` is treated as `starling read
+  --foo` or passed straight to the root parser. Forgetting to add a new top-level flag to
+  `TOP_LEVEL_FLAGS` would silently rewrite it into a `read` argument instead.
+- **`ruff format --check` on the whole tree still reports pre-existing drift** in
+  `src/starling/voices.py`, `tests/conftest.py`, `tests/test_config.py`, and
+  `tests/test_voices.py` — flagged already in Phase 3b's notes and left alone again in 3c
+  since neither phase's diff touched those specific lines. Whoever next edits those files
+  should expect `ruff format` to reflow unrelated lines nearby; a dedicated
+  whole-tree-reformat commit (with no logic changes) would clear this cleanly if it starts
+  becoming a recurring distraction.
+- **README's `## Usage` section was rewritten in 3c to reflect the new CLI**, but the rest
+  of the README (Setup Instructions' `pip install -r requirements.txt`, the File Structure
+  section listing `articleReader.py`/`requirements.txt`, Troubleshooting) is still stale —
+  deliberately out of scope per the 3c plan text ("the full README rewrite is Phase 6").
+  Phase 6 should not assume the Usage section is also still wrong; only rewrite it if the
+  CLI surface has changed again by then.
+
+
 Carried forward from Phase 0 (`plans/starling-launch/00-history-and-rename.md`), completed
 2026-09-01.
 

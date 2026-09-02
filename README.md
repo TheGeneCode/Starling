@@ -78,19 +78,48 @@ are priced differently on your Google Cloud account — see the pricing note in
 
 ## Usage
 
-1. Place your `.txt` files in the `input/` directory
-2. Run the script:
-   ```powershell
-   python articleReader.py
-   ```
-3. The script will:
-   - Remove academic citations from the text
-   - Automatically split long articles into 4.5KB chunks (safe for the 5KB API limit)
-   - Convert each chunk to speech using Google Cloud TTS (ChirpHD model)
-   - Combine all audio chunks into a single seamless `.wav` file
-   - Save audio to your output directory
-   - Archive processed files to the `archive/` directory
-   - Log usage to `tts_usage.log`
+Install the `starling` command:
+
+```powershell
+uv tool install starling
+```
+
+Or run it straight from a checkout without installing:
+
+```powershell
+uvx --from . starling --help
+```
+
+Starling has four subcommands. Bare `starling` (no subcommand) is shorthand for
+`starling read`.
+
+| Command | What it does |
+|---|---|
+| `starling read [--input-dir PATH] [-y\|--yes\|--overwrite] [--dry-run]` | Synthesize every `.txt` in the input directory. The default command. |
+| `starling capture` | Open the clipboard-capture window that saves articles into the input directory. |
+| `starling voices [LANGUAGE_CODE]` | List the Google voices available for a language (defaults to `STARLING_LANGUAGE_CODE`). |
+| `starling usage` | Print this month's character total from the usage log. |
+
+`read` flags:
+- `--input-dir PATH` — read `.txt` files from `PATH` for this run instead of `STARLING_INPUT_DIR`.
+- `-y`, `--yes`, `--overwrite` — overwrite an existing `.wav` without prompting.
+- `--dry-run` — report what would be synthesized and billed, without calling Google or needing credentials.
+
+```powershell
+starling read --dry-run
+starling read --yes
+starling voices en-GB
+starling usage
+```
+
+Each run:
+- Removes academic citations from the text
+- Automatically splits long articles into 4.5KB chunks (safe for the 5KB API limit)
+- Converts each chunk to speech using Google Cloud TTS
+- Combines all audio chunks into a single seamless `.wav` file
+- Saves audio to your output directory
+- Archives processed files to the archive directory
+- Logs usage to the usage log
 
 ## Usage Tracking
 

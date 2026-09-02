@@ -44,6 +44,9 @@ Homepage = "https://github.com/TheGeneCode/Starling"
 Issues = "https://github.com/TheGeneCode/Starling/issues"
 Releases = "https://github.com/TheGeneCode/Starling/releases"
 
+[project.scripts]
+starling = "starling.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

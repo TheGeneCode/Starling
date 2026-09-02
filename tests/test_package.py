@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import ast
 import importlib.metadata
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
 import starling
+import starling.capture
 import starling.config
 import starling.reader
 
@@ -85,30 +87,34 @@ def test_reader_log_paths_come_from_config() -> None:
     assert reader.ERROR_LOG_PATH.is_absolute()
 
 
-# capture.py builds its Tkinter UI at import time, so it can only be parsed here.
-# Phase 3 wraps it in main(); replace this with a real import test then.
-def test_capture_module_parses_without_importing(package_dir: Path) -> None:
-    """
-    Test that capture.py parses cleanly without importing it.
+def test_capture_module_imports_without_side_effects() -> None:
+    """Test that importing starling.capture returns promptly: no window, no mainloop."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import starling.capture"],
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
 
-    capture.py builds Tkinter UI at module level, so it cannot be imported.
-    """
-    capture_path = package_dir / "capture.py"
-    source = capture_path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
 
-    function_names = {
-        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-    }
-    expected_functions = {
+def test_capture_exposes_public_surface() -> None:
+    """Test that capture exposes CaptureWindow, run_capture, and the pure helpers."""
+    capture = starling.capture
+    names = [
+        "CaptureWindow",
+        "run_capture",
+        "run_article_reader",
+        "console_executable",
+        "update_entry",
+        "make_filename_ready",
         "convert_numbers_to_words",
         "refine_text",
-        "make_filename_ready",
         "shorten_text",
-    }
-    assert expected_functions.issubset(function_names), (
-        f"Missing functions: {expected_functions - function_names}"
-    )
+    ]
+    for name in names:
+        assert hasattr(capture, name), f"Missing symbol: {name}"
+        assert callable(getattr(capture, name)), f"Not callable: {name}"
 
 
 def test_dropped_dependencies_are_not_imported(package_dir: Path) -> None:
