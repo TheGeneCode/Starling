@@ -136,3 +136,52 @@ def fake_tts_client(voice_catalog: list[SimpleNamespace]) -> MagicMock:
     client = MagicMock()
     client.list_voices.return_value = SimpleNamespace(voices=voice_catalog)
     return client
+
+
+@pytest.fixture
+def state_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Redirect the update-check state file into tmp_path, never the real user data dir."""
+    import starling.update_check as uc
+
+    path = tmp_path / "state" / "update-check.json"
+    monkeypatch.setattr(uc, "state_path", lambda: path)
+    return path
+
+
+@pytest.fixture
+def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Make any unmocked HTTP call fail loudly instead of reaching the internet.
+
+    Tests that need a response patch `requests.get` themselves, which overrides this.
+    """
+    import requests
+
+    def _forbidden(*args: object, **kwargs: object) -> None:
+        msg = "a test attempted a real network call"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(requests, "get", _forbidden)
+
+
+@pytest.fixture
+def captured_threads(monkeypatch: pytest.MonkeyPatch) -> list[MagicMock]:
+    """
+    Replace threading.Thread inside update_check with a recorder.
+
+    Returns the list of constructed thread mocks so a test can assert on target/daemon and
+    invoke the target synchronously. Keeps the suite deterministic and leak-free -- a real
+    daemon thread outliving a test is exactly the flake this avoids.
+    """
+    import starling.update_check as uc
+
+    created: list[MagicMock] = []
+
+    def _factory(**kwargs: object) -> MagicMock:
+        thread = MagicMock()
+        thread.kwargs = kwargs
+        created.append(thread)
+        return thread
+
+    monkeypatch.setattr(uc.threading, "Thread", _factory)
+    return created

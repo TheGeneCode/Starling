@@ -155,6 +155,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     raw = sys.argv[1:] if argv is None else list(argv)
     parser = build_parser()
     args = parser.parse_args(apply_default_command(raw))
+
+    # After parse_args on purpose: --help and --version exit inside parse_args, so those
+    # stay pure. Imported lazily to match the capture/voices handlers.
+    from starling.update_check import maybe_notify_update  # noqa: PLC0415
+
+    maybe_notify_update()
+
     try:
         return args.handler(args)
     except KeyboardInterrupt:

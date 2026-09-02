@@ -1,5 +1,41 @@
 # Notes for future plans
 
+## Carried forward from Phase 4 (update-check)
+
+- **`cli.main()` now calls `maybe_notify_update()` unconditionally, right after
+  `parse_args` and before dispatch.** This is the established slot for any future
+  startup-time, cross-cutting, must-never-block concern — lazy-imported like the
+  subcommand handlers, placed after `parse_args` so `--help`/`--version` (which exit
+  inside `parse_args`) stay pure.
+- **Plan gap, now a standing rule: a feature wired unconditionally into `cli.main()`
+  needs its pre-existing dispatch tests updated in the same phase, not left for QA to
+  catch.** Phase 4's own plan wired the update check into every CLI invocation but never
+  touched the `test_main_*` dispatch tests written in Phase 3c, which would otherwise
+  have silently written to the real `%LOCALAPPDATA%` and hit GitHub's API on every
+  unrelated test run. Fixed with a local (not global-conftest) autouse fixture in
+  `test_cli.py`. Any future phase that hooks something else into `main()`
+  unconditionally should mock it in `test_cli.py` from the start.
+- **`requests` is now a direct declared dependency** (`pyproject.toml`), previously only
+  transitive via `google-cloud-texttospeech`. `uv lock` added zero new wheels. It stays
+  **lazily imported** inside `update_check.get_latest_release()` only — the CLI startup
+  path (`cli.py` module scope) must never pay `requests`' import cost. Any future feature
+  needing an HTTP client should follow the same lazy-import placement.
+- **The GitHub releases API returns nothing until the first `v*.*.*` tag exists.** Until
+  Phase 5 ships a real release, `get_latest_release()` legitimately returns `None` every
+  time and the update-check notice never prints — this is correct, not a regression to
+  chase. Phase 7's exit criterion ("verify the update check sees v0.1.0 from an older
+  installed version") is the first point this becomes end-to-end testable, and needs a
+  deliberately downgraded `APP_VERSION` to exercise.
+- **Two new `candidate`-status genekit ledger sightings exist**
+  (`genekit/ledger/CANDIDATES.md`): `user-state-dir` (1 sighting) and
+  `release-update-check` (2 sightings, MeadowLark + Starling). Neither is ripe. A future
+  phase touching platform-state-directory logic or another release-check should add its
+  own sighting rather than re-deriving the pattern from scratch.
+- **`state_dir()` hand-rolls the Windows/macOS/XDG branch rather than depending on
+  `platformdirs`**, deliberately — `platformdirs` would be a genuinely new wheel for
+  ~12 lines. Revisit only if a second, independent need for a full platform-dirs API
+  shows up (see the `user-state-dir` ledger entry above).
+
 ## Carried forward from Phase 3c
 
 - **The `starling` console-script entry point is live** (`[project.scripts]` in

@@ -14,10 +14,27 @@ import pytest
 
 import starling
 import starling.cli
+import starling.update_check
 from starling.cli import apply_default_command, build_parser, main
 from starling.reader import ReadOptions
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture(autouse=True)
+def _no_update_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Stop every test in this file from touching the real update-check state or network.
+
+    `main()` calls `maybe_notify_update()` unconditionally after `parse_args`, so without
+    this every dispatch test below would write to the developer's real AppData state file
+    and start a real background thread hitting GitHub. Tests that specifically exercise
+    the update-check wiring re-patch this themselves, which simply overrides it further.
+    """
+    monkeypatch.setattr(
+        starling.update_check, "maybe_notify_update", lambda *_args, **_kwargs: None,
+    )
+
 
 # ---------------------------------------------------------------------------
 # apply_default_command
@@ -386,6 +403,10 @@ def test_python_dash_m_starling_read_on_empty_dir(tmp_path: Path) -> None:
         **{k: v for k, v in os.environ.items() if not k.startswith("STARLING_")},
         "STARLING_HOME": str(tmp_path),
         "STARLING_INPUT_DIR": str(tmp_path),
+        # This is a real subprocess, so the in-process _no_update_check autouse fixture
+        # can't reach it -- opt out for real, or this test hits GitHub and writes to the
+        # developer's real AppData state file on every run.
+        "STARLING_UPDATE_CHECK": "false",
     }
     result = subprocess.run(
         [sys.executable, "-m", "starling", "read"],
@@ -397,3 +418,38 @@ def test_python_dash_m_starling_read_on_empty_dir(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "No text files found."
+
+
+# ---------------------------------------------------------------------------
+# Update-check wiring
+# ---------------------------------------------------------------------------
+
+
+def test_main_checks_for_updates_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _Recorder()
+    monkeypatch.setattr(starling.update_check, "maybe_notify_update", recorder)
+    monkeypatch.setattr(starling.cli, "run_read", lambda **_kwargs: 0)
+
+    main(["read", "--dry-run"])
+
+    assert len(recorder.calls) == 1
+
+
+def test_version_flag_does_not_check_for_updates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _Recorder()
+    monkeypatch.setattr(starling.update_check, "maybe_notify_update", recorder)
+
+    with pytest.raises(SystemExit):
+        main(["--version"])
+
+    assert recorder.calls == []
+
+
+def test_pyproject_declares_requests() -> None:
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = data["project"]["dependencies"]
+    assert any(dep.startswith("requests") for dep in dependencies)

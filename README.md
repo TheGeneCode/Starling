@@ -160,6 +160,20 @@ Check your `tts_usage.log` monthly total to ensure you stay within free tier lim
 └── archive/                 # Processed files
 ```
 
+## Updates
+
+Starling checks GitHub for a newer release at most once a week. The check runs on a
+background thread, never blocks or prompts, and prints at most one line:
+
+    A new Starling release is available: v0.2.0 (you have 0.1.0)
+    https://github.com/TheGeneCode/Starling/releases
+
+There is no auto-updater — upgrade with `uv tool upgrade starling`. If the check fails for
+any reason (no internet, a timeout, GitHub rate-limiting), Starling says nothing and
+carries on. It is skipped entirely when running from a source checkout.
+
+To turn it off, set `STARLING_UPDATE_CHECK=false` in your `.env` or environment.
+
 ## Troubleshooting
 
 **Error: "GOOGLE_APPLICATION_CREDENTIALS not found"**
