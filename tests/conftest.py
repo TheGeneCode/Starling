@@ -6,7 +6,9 @@ import ast
 import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -127,3 +129,32 @@ def fake_credentials(tmp_path: Path) -> Path:
     key = tmp_path / "service-account.json"
     key.write_text('{"type": "service_account"}', encoding="utf-8")
     return key
+
+
+@pytest.fixture
+def voice_catalog() -> list[SimpleNamespace]:
+    """
+    Stand-in for Google's ListVoices payload, shaped like the real proto messages.
+
+    Deliberately mixes families and casings so family parsing and case-insensitive
+    matching are exercised by the same fixture.
+    """
+    from google.cloud import texttospeech
+
+    female = texttospeech.SsmlVoiceGender.FEMALE
+    male = texttospeech.SsmlVoiceGender.MALE
+    unspecified = texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED
+    return [
+        SimpleNamespace(name="en-US-Chirp3-HD-Aoede", ssml_gender=female, language_codes=["en-US"]),
+        SimpleNamespace(name="en-US-Chirp3-HD-Puck", ssml_gender=male, language_codes=["en-US"]),
+        SimpleNamespace(name="en-US-Neural2-C", ssml_gender=female, language_codes=["en-US"]),
+        SimpleNamespace(name="en-US-Standard-A", ssml_gender=unspecified, language_codes=["en-US"]),
+    ]
+
+
+@pytest.fixture
+def fake_tts_client(voice_catalog: list[SimpleNamespace]) -> MagicMock:
+    """Return a TextToSpeechClient mock whose list_voices returns the fixture catalog."""
+    client = MagicMock()
+    client.list_voices.return_value = SimpleNamespace(voices=voice_catalog)
+    return client

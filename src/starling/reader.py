@@ -4,7 +4,6 @@ import contextlib
 import io
 import itertools
 import logging
-import random
 import re
 import shutil
 import sys
@@ -15,6 +14,8 @@ from pathlib import Path
 from threading import Event, Thread
 
 from genekit.logging import configure_logging, dedicated_file_logger, get_logger
+from google.api_core.exceptions import GoogleAPICallError
+from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import texttospeech
 
 from starling.config import (
@@ -23,6 +24,14 @@ from starling.config import (
     ensure_directories,
     load_config,
     require_credentials,
+)
+from starling.voices import (
+    UnknownVoiceError,
+    fetch_voices,
+    model_family,
+    pricing_notice,
+    select_voice,
+    validate_voice_names,
 )
 
 # from kittentts import KittenTTS
@@ -220,6 +229,23 @@ if __name__ == "__main__":
 
     tts_client = texttospeech.TextToSpeechClient()
 
+    configured_voices = (
+        (CONFIG.voice_name,)
+        if CONFIG.voice_mode is VoiceMode.FIXED
+        else CONFIG.voice_pool
+    )
+    try:
+        available_voices = fetch_voices(tts_client, language_code)
+        voice_pool = validate_voice_names(configured_voices, available_voices)
+    except (UnknownVoiceError, ConfigError) as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+    except (DefaultCredentialsError, GoogleAPICallError) as exc:
+        print(f"Error: could not reach Google Text-to-Speech to check voices: {exc}")
+        sys.exit(1)
+
+    print(pricing_notice([model_family(name) for name in voice_pool]))
+
     input_paths = list(input_folder_path.glob("*.txt"))
     if input_paths:
         for filepath in input_paths:
@@ -256,10 +282,7 @@ if __name__ == "__main__":
 
                     # Choose a voice at random for this file and prepare
                     # the voice + audio config (reused for all chunks).
-                    if CONFIG.voice_mode is VoiceMode.FIXED:
-                        selected_voice = CONFIG.voice_name
-                    else:
-                        selected_voice = random.choice(CONFIG.voice_pool)  # noqa: S311 - voice variety is cosmetic, not security
+                    selected_voice = select_voice(CONFIG, voice_pool)
                     print(f"Using voice: {selected_voice}")
                     voice = texttospeech.VoiceSelectionParams(
                         language_code=language_code,

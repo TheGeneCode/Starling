@@ -84,3 +84,26 @@ Carried forward from Phase 0 (`plans/starling-launch/00-history-and-rename.md`),
   `usage_log_path` override parameter, and `capture.py::run_article_reader()`'s
   platform-gated `creationflags` and exact subprocess argv (previously zero coverage). No
   defects found — all gaps were coverage-only.
+
+## Carried forward from Phase 2b
+
+- **All 22 names in `config.DEFAULT_VOICE_POOL` are still present in Google's live `en-US`
+  catalog** — run live on 2026-09-01 via `uv run python -m starling.voices en-US`. Nothing is
+  stale; no edit to the tuple is needed.
+- **Live catalog has 99 total voices for `en-US` (vs. 22 in default pool)**, across families:
+  Casual, Chirp-HD, Chirp3-HD, Neural2, News, Polyglot, Standard, Studio, Wavenet, plus one
+  family that `model_family()` cannot classify.
+- **Bare single-word voice names appear in the catalog** (~30 entries like `Achernar`, `Puck`,
+  `Zephyr`, `Charon`) that look like preview/alias entries for the same underlying Chirp3
+  voices also available under their full `en-US-Chirp3-HD-*` names. Both forms are returned by
+  `ListVoices`. Because `model_family()` parses family from the dash-separated name structure,
+  these bare names fall into `len(parts) < 3`, classified as `"Unknown"` family in
+  `format_voices_table`/`pricing_notice` output. A user who copies one into `STARLING_VOICE_POOL`
+  passes validation (they're real catalog entries) but gets uninformative billing info. Phase 6
+  (pricing verification) should decide whether to special-case these bare names or leave them as
+  `"Unknown"` on purpose. Out of scope for Phase 2b.
+- **Pre-flight validation ordering is wired correctly** — `fetch_voices` → `validate_voice_names`
+  → raise before any `synthesize_speech` call, per the plan, in `reader.py`'s `__main__` block.
+  `UnknownVoiceError` subclasses `ConfigError` so the caller's existing `except ConfigError`
+  catch handles it with no new except clause needed (new except clause was still added per the
+  plan's exact code, listing `UnknownVoiceError` before `ConfigError` for readability).
