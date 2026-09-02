@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.0.2] - 2026-09-02
-
 ## [0.1.0] - 2026-09-02
 
 First public release. Starling began as a private collection of scripts and became an
@@ -43,6 +41,14 @@ installable command-line tool.
 ### Removed
 
 - The `kittentts` and `pandas` dependencies, neither of which was used by shipping code.
+
+## [0.0.2] - 2026-09-02
+
+- testing release script
+
+## [0.0.1] - 2026-09-02
+
+- test release
 
 [Unreleased]: https://github.com/TheGeneCode/Starling/compare/v0.0.2...HEAD
 [0.0.2]: https://github.com/TheGeneCode/Starling/compare/v0.1.0...v0.0.2
