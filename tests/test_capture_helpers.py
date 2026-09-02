@@ -383,6 +383,14 @@ def test_console_executable_accepts_a_directory_named_like_the_sibling(
 # test interpreter is not named pythonw.exe.
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason=(
+        "subprocess.CREATE_NEW_CONSOLE is bound by the real subprocess module only "
+        "on an actual Windows interpreter; monkeypatching sys.platform can't create "
+        "it, so this branch is only genuinely exercisable on a real win32 runner."
+    ),
+)
 def test_run_article_reader_windows_uses_new_console_flag_and_module_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
