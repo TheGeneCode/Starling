@@ -1,17 +1,20 @@
 """Processes all .txt files in the specified input directory by removing citations, converting the text to speech using Google Cloud TTS, and saving the resulting audio as .wav files in the output directory. Displays a spinner animation during processing, handles file overwrites with user confirmation, logs errors and usage, and moves processed files to an archive directory."""
 
+from __future__ import annotations
+
 import contextlib
 import io
 import itertools
-import logging
 import re
 import shutil
 import sys
 import time
 import wave
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event, Thread
+from typing import TYPE_CHECKING, Final
 
 from genekit.logging import configure_logging, dedicated_file_logger, get_logger
 from google.api_core.exceptions import GoogleAPICallError
@@ -34,11 +37,39 @@ from starling.voices import (
     validate_voice_names,
 )
 
+if TYPE_CHECKING:
+    import logging
+    from collections.abc import Callable, Iterator, Sequence
+
+    from starling.config import StarlingConfig
+
 # from kittentts import KittenTTS
 
 CONFIG = load_config()
 USAGE_LOG_PATH = CONFIG.usage_log_path
 ERROR_LOG_PATH = CONFIG.error_log_path
+
+DEFAULT_SAMPLE_RATE_HERTZ: Final = 24000
+
+
+@dataclass(frozen=True, slots=True)
+class ReadOptions:
+    """One `starling read` invocation's flags."""
+
+    assume_yes: bool = False
+    dry_run: bool = False
+    input_dir: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DryRunEntry:
+    """What `--dry-run` reports for one input file."""
+
+    path: Path
+    output_path: Path
+    char_count: int
+    chunk_count: int
+    output_exists: bool
 
 
 def spinner(should_spin: Event) -> None:
@@ -113,11 +144,60 @@ def get_monthly_total(usage_log_path: Path | None = None) -> dict:
     }
 
 
+def format_monthly_total(monthly: dict) -> str:
+    """
+    Render the month-to-date usage line that `read` prints before every file.
+
+    `usage` prints this exact string, so the two commands can never disagree.
+    """
+    return (
+        f"[{monthly['current_month']}] Total characters logged this month: "
+        f"{monthly['total_chars']:,} | {monthly['total_chars'] / 1000000:.0%}"
+    )
+
+
+@contextlib.contextmanager
+def spinner_running() -> Iterator[None]:
+    """Run the console spinner for the duration of the block, always joining the thread."""
+    should_spin = Event()
+    should_spin.set()
+    spinner_thread = Thread(target=spinner, args=(should_spin,))
+    spinner_thread.start()
+    try:
+        yield
+    finally:
+        should_spin.clear()
+        spinner_thread.join()
+
+
+def confirm_overwrite(
+    output_path: Path,
+    *,
+    assume_yes: bool = False,
+    prompt: Callable[[str], str] = input,
+) -> bool:
+    """
+    Return True when synthesis should proceed for this output path.
+
+    Preserves the original prompt text and its `.lower() != "y"` acceptance rule exactly;
+    `assume_yes` (the --yes/--overwrite flag) skips the prompt entirely.
+    """
+    if not output_path.exists():
+        return True
+    if assume_yes:
+        return True
+    answer = prompt(
+        f"The file {output_path} already exists. Do you want to overwrite it? (y/n): ",
+    )
+    return answer.lower() == "y"
+
+
 def log_usage(
     usage_logger: logging.Logger,
     filename: str,
     voice: str,
     char_count: int,
+    usage_log_path: Path | None = None,
 ) -> None:
     """
     Log TTS usage with human-readable format including running monthly total.
@@ -127,8 +207,9 @@ def log_usage(
         filename: Name of the file being processed
         voice: Voice used for TTS
         char_count: Number of characters processed
+        usage_log_path: Override for the usage log path. Defaults to USAGE_LOG_PATH.
     """
-    monthly_data = get_monthly_total()
+    monthly_data = get_monthly_total(usage_log_path)
     running_total = monthly_data["total_chars"] + char_count
 
     message = (
@@ -210,137 +291,267 @@ def combine_audio_chunks(
     return wav_buffer.getvalue()
 
 
-if __name__ == "__main__":
+def resolve_voice_pool(
+    config: StarlingConfig,
+    client: texttospeech.TextToSpeechClient,
+) -> tuple[str, ...]:
+    """
+    Resolve the configured voice(s) against Google's live catalog.
+
+    Raises UnknownVoiceError / ConfigError for a bad name, and
+    DefaultCredentialsError / GoogleAPICallError when the catalog is unreachable.
+    ListVoices is not billed, so this is free early validation.
+    """
+    configured = (
+        (config.voice_name,)
+        if config.voice_mode is VoiceMode.FIXED
+        else config.voice_pool
+    )
+    return validate_voice_names(configured, fetch_voices(client, config.language_code))
+
+
+def synthesize_text(
+    client: texttospeech.TextToSpeechClient,
+    text: str,
+    *,
+    voice_name: str,
+    language_code: str,
+    sample_rate: int = DEFAULT_SAMPLE_RATE_HERTZ,
+) -> bytes:
+    """Chunk `text`, synthesize every chunk with one voice, and return one WAV blob."""
+    voice = texttospeech.VoiceSelectionParams(
+        language_code=language_code,
+        name=voice_name,
+    )
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+        sample_rate_hertz=sample_rate,
+    )
+    audio_chunks = [
+        client.synthesize_speech(
+            input=texttospeech.SynthesisInput(text=chunk),
+            voice=voice,
+            audio_config=audio_config,
+        ).audio_content
+        for chunk in split_text_into_chunks(text)
+    ]
+    return combine_audio_chunks(audio_chunks, sample_rate)
+
+
+def archive_file(filepath: Path, archive_dir: Path) -> bool:
+    """Move a processed input file into the archive. Returns False on failure."""
     try:
-        ensure_directories(CONFIG)
-        credentials_path = require_credentials(CONFIG)
+        shutil.move(str(filepath), str(Path(archive_dir) / filepath.name))
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        print(f"Error moving file {filepath}: {e!s}")
+        return False
+    return True
+
+
+def process_file(
+    filepath: Path,
+    *,
+    client: texttospeech.TextToSpeechClient,
+    config: StarlingConfig,
+    voice_pool: Sequence[str],
+    usage_logger: logging.Logger,
+    logger: logging.Logger,
+    options: ReadOptions,
+) -> bool:
+    """Synthesize one article. Returns True only when the .wav was written and logged."""
+    output_path = config.output_dir / f"{filepath.stem}.wav"
+    if not confirm_overwrite(output_path, assume_yes=options.assume_yes):
+        return False
+
+    print(f"Starting {filepath.stem}")
+    print(format_monthly_total(get_monthly_total(config.usage_log_path)))
+
+    success = False
+    with spinner_running():
+        try:
+            # The read is inside the try on purpose: a locked or vanished file is a
+            # per-file error, not a reason to abandon the rest of the batch.
+            text = remove_citations(filepath.read_text(encoding="utf8"))
+            selected_voice = select_voice(config, voice_pool)
+            print(f"Using voice: {selected_voice}")
+            audio = synthesize_text(
+                client,
+                text,
+                voice_name=selected_voice,
+                language_code=config.language_code,
+            )
+            output_path.write_bytes(audio)
+            log_usage(
+                usage_logger,
+                filepath.stem,
+                selected_voice,
+                len(text),
+                config.usage_log_path,
+            )
+            success = True
+        except FileNotFoundError as e:
+            print(f"File error while processing {filepath}: {e!s}")
+        except PermissionError as e:
+            print(f"Permission error while processing {filepath}: {e!s}")
+        except OSError as e:
+            print(f"OS error while processing {filepath}: {e!s}")
+        except Exception:
+            logger.exception("Unexpected error while processing %s", filepath)
+            print(
+                f"Unexpected error occurred while processing {filepath}. "
+                f"Check {config.error_log_path} for details.",
+            )
+    print("Finished")
+    return success
+
+
+def _configured_voice_names(config: StarlingConfig) -> tuple[str, ...]:
+    """Configured voice names, unvalidated — a dry run never contacts Google."""  # noqa: D401
+    return (
+        (config.voice_name,)
+        if config.voice_mode is VoiceMode.FIXED
+        else config.voice_pool
+    )
+
+
+def plan_dry_run(
+    input_paths: Sequence[Path],
+    config: StarlingConfig,
+) -> list[DryRunEntry]:
+    """Measure every input file the way `read` would bill it, without calling the API."""
+    entries: list[DryRunEntry] = []
+    for path in input_paths:
+        try:
+            text = remove_citations(path.read_text(encoding="utf8"))
+        except OSError as e:
+            print(f"File error while processing {path}: {e!s}")
+            continue
+        output_path = config.output_dir / f"{path.stem}.wav"
+        entries.append(
+            DryRunEntry(
+                path=path,
+                output_path=output_path,
+                char_count=len(text),
+                chunk_count=len(split_text_into_chunks(text)),
+                output_exists=output_path.exists(),
+            ),
+        )
+    return entries
+
+
+def print_dry_run(
+    entries: Sequence[DryRunEntry],
+    config: StarlingConfig,
+    *,
+    assume_yes: bool = False,
+) -> None:
+    """Print the dry-run report. Never prompts, never calls Google, never moves a file."""
+    print("Dry run — nothing is synthesized and no Google API calls are made.")
+    print()
+    for entry in entries:
+        flag = "*" if entry.output_exists else " "
+        chunks = "chunk" if entry.chunk_count == 1 else "chunks"
+        print(
+            f"  {flag} {entry.path.name}  {entry.char_count:,} characters, "
+            f"{entry.chunk_count} {chunks} -> {entry.output_path}",
+        )
+    if any(entry.output_exists for entry in entries):
+        note = (
+            "would be overwritten (--yes)"
+            if assume_yes
+            else "already exists; `read` would prompt before overwriting"
+        )
+        print()
+        print(f"  * output {note}.")
+
+    total = sum(entry.char_count for entry in entries)
+    monthly = get_monthly_total(config.usage_log_path)
+    print()
+    print(f"{len(entries)} file(s), {total:,} characters would be billed.")
+    print(format_monthly_total(monthly))
+    print(
+        f"After this run the month would total "
+        f"{monthly['total_chars'] + total:,} characters.",
+    )
+    print(
+        pricing_notice(
+            [model_family(name) for name in _configured_voice_names(config)],
+        ),
+    )
+
+
+def run_read(
+    config: StarlingConfig | None = None,
+    options: ReadOptions | None = None,
+) -> int:
+    """Run the article-to-speech pipeline. Returns a process exit code."""
+    config = config if config is not None else load_config()
+    options = options if options is not None else ReadOptions()
+
+    try:
+        ensure_directories(config)
     except ConfigError as exc:
         print(f"Error: {exc}")
-        sys.exit(1)
+        return 1
 
-    configure_logging("ERROR", log_file=ERROR_LOG_PATH, console="none")
-    logger = get_logger(__name__)
-    usage_logger = initialize_usage_logger()
+    input_dir = options.input_dir if options.input_dir is not None else config.input_dir
+    input_paths = sorted(input_dir.glob("*.txt"))
+    if not input_paths:
+        print("No text files found.")
+        return 0
 
-    language_code = CONFIG.language_code
-    output_folder_path = CONFIG.output_dir
-    archive_folder_path = CONFIG.archive_dir
-    input_folder_path = CONFIG.input_dir
+    if options.dry_run:
+        print_dry_run(
+            plan_dry_run(input_paths, config),
+            config,
+            assume_yes=options.assume_yes,
+        )
+        return 0
 
-    tts_client = texttospeech.TextToSpeechClient()
-
-    configured_voices = (
-        (CONFIG.voice_name,)
-        if CONFIG.voice_mode is VoiceMode.FIXED
-        else CONFIG.voice_pool
-    )
     try:
-        available_voices = fetch_voices(tts_client, language_code)
-        voice_pool = validate_voice_names(configured_voices, available_voices)
+        require_credentials(config)
+    except ConfigError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    configure_logging("ERROR", log_file=config.error_log_path, console="none")
+    logger = get_logger(__name__)
+    usage_logger = initialize_usage_logger(config.usage_log_path)
+
+    client = texttospeech.TextToSpeechClient()
+    try:
+        voice_pool = resolve_voice_pool(config, client)
     except (UnknownVoiceError, ConfigError) as exc:
         print(f"Error: {exc}")
-        sys.exit(1)
+        return 1
     except (DefaultCredentialsError, GoogleAPICallError) as exc:
         print(f"Error: could not reach Google Text-to-Speech to check voices: {exc}")
-        sys.exit(1)
+        return 1
 
     print(pricing_notice([model_family(name) for name in voice_pool]))
 
-    input_paths = list(input_folder_path.glob("*.txt"))
-    if input_paths:
-        for filepath in input_paths:
-            success = False
-            with filepath.open("r", encoding="utf8") as file:
-                filename = filepath.stem
-                output_file_path = output_folder_path / f"{filename}.wav"
-                if output_file_path.exists():
-                    overwrite = input(
-                        f"The file {output_file_path} already exists. "
-                        f"Do you want to overwrite it? (y/n): ",
-                    )
-                    if overwrite.lower() != "y":
-                        continue
-                print(f"Starting {filename}")
-                # Output current month's total characters before API calls
-                monthly_data = get_monthly_total()
-                print(
-                    f"[{monthly_data['current_month']}] Total characters logged this month: {monthly_data['total_chars']:,} | {monthly_data['total_chars'] / 1000000:.0%}",
-                )
-                # thread for the spinner
-                should_spin = Event()
-                should_spin.set()
-                spinner_thread = Thread(target=spinner, args=(should_spin,))
-                spinner_thread.start()
-                # slow task
-                try:
-                    text = file.read()
-                    text = remove_citations(text)
+    for filepath in input_paths:
+        if process_file(
+            filepath,
+            client=client,
+            config=config,
+            voice_pool=voice_pool,
+            usage_logger=usage_logger,
+            logger=logger,
+            options=options,
+        ):
+            archive_file(filepath, config.archive_dir)
 
-                    # Split text into chunks if needed
-                    text_chunks = split_text_into_chunks(text)
-                    audio_chunks = []
+    print("All files completed.")
+    return 0
 
-                    # Choose a voice at random for this file and prepare
-                    # the voice + audio config (reused for all chunks).
-                    selected_voice = select_voice(CONFIG, voice_pool)
-                    print(f"Using voice: {selected_voice}")
-                    voice = texttospeech.VoiceSelectionParams(
-                        language_code=language_code,
-                        name=selected_voice,
-                    )
 
-                    audio_config = texttospeech.AudioConfig(
-                        audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                        sample_rate_hertz=24000,
-                    )
+def run_usage(config: StarlingConfig | None = None) -> int:
+    """Print this month's character total — the same line `read` prints per file."""
+    config = config if config is not None else load_config()
+    print(format_monthly_total(get_monthly_total(config.usage_log_path)))
+    return 0
 
-                    # Synthesize each chunk
-                    for chunk in text_chunks:
-                        synthesis_input = texttospeech.SynthesisInput(text=chunk)
 
-                        # Make the TTS request
-                        response = tts_client.synthesize_speech(
-                            input=synthesis_input,
-                            voice=voice,
-                            audio_config=audio_config,
-                        )
-
-                        audio_chunks.append(response.audio_content)
-
-                    # Combine all audio chunks and save as WAV
-                    combined_audio = combine_audio_chunks(audio_chunks)
-                    with output_file_path.open("wb") as out:
-                        out.write(combined_audio)
-
-                    # Log usage (include the chosen voice)
-                    char_count = len(text)
-                    log_usage(usage_logger, filename, selected_voice, char_count)
-                    success = True
-
-                except FileNotFoundError as e:
-                    print(f"File error while processing {filepath}: {e!s}")
-                except PermissionError as e:
-                    print(f"Permission error while processing {filepath}: {e!s}")
-                except OSError as e:
-                    print(f"OS error while processing {filepath}: {e!s}")
-                except Exception:
-                    logger.exception("Unexpected error while processing %s", filepath)
-                    print(
-                        f"Unexpected error occurred while processing {filepath}. "
-                        f"Check logfile.txt for details.",
-                    )
-                # close spinner thread
-                should_spin.clear()
-                spinner_thread.join()
-                print("Finished")
-            if success:
-                try:
-                    shutil.move(
-                        filepath,
-                        str(Path(archive_folder_path) / Path(filepath).name),
-                    )
-                except (FileNotFoundError, PermissionError, OSError) as e:
-                    print(f"Error moving file {filepath}: {e!s}")
-        print("All files completed.")
-    else:
-        print("No text files found.")
+if __name__ == "__main__":
+    sys.exit(run_read())

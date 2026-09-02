@@ -54,6 +54,26 @@ def test_reader_exposes_pure_helpers() -> None:
         assert callable(helper), f"Not callable: {helper_name}"
 
 
+def test_reader_exposes_pipeline_functions() -> None:
+    """Test that reader exposes every function introduced by the Phase 3a pipeline extraction."""
+    reader = starling.reader
+    functions = [
+        "run_read",
+        "run_usage",
+        "process_file",
+        "synthesize_text",
+        "resolve_voice_pool",
+        "archive_file",
+        "confirm_overwrite",
+        "spinner_running",
+        "plan_dry_run",
+        "format_monthly_total",
+    ]
+    for name in functions:
+        assert hasattr(reader, name), f"Missing function: {name}"
+        assert callable(getattr(reader, name)), f"Not callable: {name}"
+
+
 def test_reader_log_paths_come_from_config() -> None:
     """Test that reader's log paths are absolute and match a freshly loaded config."""
     reader = starling.reader
