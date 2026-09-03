@@ -61,6 +61,19 @@ if ($headingIndex -lt 0) {
     exit 1
 }
 
+# A heading or link definition for this version already existing means the changelog was
+# hand-edited (or a previous run half-completed). Rewriting [Unreleased] on top of it
+# silently produces two "## [X.Y.Z]" sections, and release.yml's `grep -q "^## \[X.Y.Z\]"`
+# gate passes on the duplicate - a corrupt changelog ships in the release.
+if ($changelog | Where-Object { $_ -eq "## [$Version] - $Date" -or $_ -match "^## \[$([regex]::Escape($Version))\] " }) {
+    Write-Error "CHANGELOG.md already has a '## [$Version]' section. Merge it by hand, or pick a different version."
+    exit 1
+}
+if ($changelog | Where-Object { $_ -match "^\[$([regex]::Escape($Version))\]: " }) {
+    Write-Error "CHANGELOG.md already has a '[$Version]:' link definition. Fix the link block by hand first."
+    exit 1
+}
+
 # Dry-run summary
 Write-Host ""
 Write-Host "Release plan:" -ForegroundColor Cyan

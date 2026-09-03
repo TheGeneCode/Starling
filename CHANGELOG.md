@@ -7,22 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `CONTRIBUTING.md`, `SECURITY.md` (with a runbook for a leaked service-account key),
-  `CODE_OF_CONDUCT.md`, `GLOSSARY.md`, and a generated terminal-capture header image
-  with the scripts to regenerate it.
-
-### Changed
-
-- README rewritten for a general audience: corrected install instructions (the bare
-  PyPI name `starling` is an unrelated project; Starling installs from its git
-  repository), verified Google Cloud pricing and free-tier figures against Google's
-  pricing page, and removed the author-specific paths.
-- Coding standards consolidated into `.claude/CLAUDE.md`; `AGENTS.md`,
-  `.trae/rules/instructions.md` and the new `.github/instructions/instructions.md` now
-  point at it.
-
 ## [0.1.0] - 2026-09-02
 
 First public release. Starling began as a private collection of scripts and became an
@@ -46,13 +30,24 @@ installable command-line tool.
   icon.
 - Continuous integration on Windows and Linux across Python 3.12 and 3.14, and a tagged
   release workflow that publishes the wheel and sdist to GitHub Releases.
+- `CONTRIBUTING.md`, `SECURITY.md` (with a runbook for a leaked service-account key),
+  `CODE_OF_CONDUCT.md`, `GLOSSARY.md`, and a generated terminal-capture header image
+  with the scripts to regenerate it.
 
 ### Changed
 
 - Every hardcoded absolute path belonging to the original author was replaced with
-  configuration; the tool now runs on a machine that has never seen `C:\Users\etreq`.
+  configuration; the tool now runs on a machine that has never seen the author's home
+  directory.
 - `genekit` is declared as a PEP 508 direct reference so the published wheel is
   installable outside a source checkout.
+- README rewritten for a general audience: corrected install instructions (the bare
+  PyPI name `starling` is an unrelated project; Starling installs from its git
+  repository), verified Google Cloud pricing and free-tier figures against Google's
+  pricing page, and removed the author-specific paths.
+- Coding standards consolidated into `.claude/CLAUDE.md`; `AGENTS.md`,
+  `.trae/rules/instructions.md` and the new `.github/instructions/instructions.md` now
+  point at it.
 
 ### Removed
 
@@ -66,6 +61,7 @@ installable command-line tool.
 
 - test release
 
-[Unreleased]: https://github.com/TheGeneCode/Starling/compare/v0.0.2...HEAD
-[0.0.2]: https://github.com/TheGeneCode/Starling/compare/v0.1.0...v0.0.2
-[0.1.0]: https://github.com/TheGeneCode/Starling/releases/tag/v0.1.0
+[Unreleased]: https://github.com/TheGeneCode/Starling/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/TheGeneCode/Starling/compare/v0.0.2...v0.1.0
+[0.0.2]: https://github.com/TheGeneCode/Starling/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/TheGeneCode/Starling/releases/tag/v0.0.1

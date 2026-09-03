@@ -1,5 +1,48 @@
 # Notes for future plans
 
+## Carried forward from Phase 7 (pre-publish audit)
+
+- **Coverage baseline held at 428 passed / 98% total, unchanged from the pre-planning
+  measurement.** All 8 previously-uncovered lines were inspected; none are critical —
+  none needed a new test:
+  - `__main__.py:3-8` — the `python -m starling` shim, acceptable per the plan.
+  - `capture.py:34-35` — `except ImportError: tk = None`, a platform guard (this machine
+    has tkinter; the branch only fires on an interpreter built without it).
+  - `capture.py:91` — `scale_currency`'s fallback `return match.group(0)`; unreachable
+    given the calling regex only ever captures `million|billion|trillion` into the group
+    that's checked against `multipliers`, so `unit` is always a hit. Effectively dead
+    code, not a test gap.
+  - `capture.py:284-285, 289-290` — `run()`/`check_clipboard()`, the Tk mainloop-driving
+    glue. Per this project's own testing convention (see `CLAUDE.md` "Testing"),
+    `poll_clipboard_once()` is tested directly instead of driving a real mainloop; these
+    two thin wrappers are the accepted cost of that convention.
+  - `capture.py:340-344` — **the plan's Step 5 table speculated this might be
+    `apply_window_icon`'s `iconbitmap()` try/except and called that "worth a test." It is
+    not.** It's the `if tk is None:` guard inside `run_capture()`, printing "Starling's
+    capture UI needs tkinter" and returning 1. Exercised live during this phase's Step 4a
+    clean-room test (`python:3.12-slim` has no tkinter) with exactly the expected
+    message, just not under pytest. The actual `iconbitmap()` try/except is at line 234
+    inside `apply_window_icon()` and **already has full test coverage**
+    (`tests/test_icon.py`: TclError, OSError, and non-swallowed-ValueError cases).
+  - `cli.py:174` — **the plan's Step 5 table named this "the `KeyboardInterrupt`
+    handler... cheap to test, do it." It is not that either.** Line 174 is
+    `sys.exit(main())` under `if __name__ == "__main__":` — never reached because pytest
+    imports the module rather than running it as a script, same class as the
+    `__main__.py` shim above. The real `except KeyboardInterrupt` block (`cli.py:167-170`)
+    is a few lines above and is **already fully covered** by `tests/test_cli.py`
+    (both the in-handler case and the argparse-level propagation case).
+  - `reader.py:557`, `voices.py:226` — both the same `if __name__ == "__main__":
+    sys.exit(...)` guard pattern as `cli.py:174` above.
+  - `update_check.py:130` — `state_path()`'s one-line body (`state_dir() /
+    STATE_FILENAME`). Only reached via `maybe_notify_update()`'s internal call chain;
+    every test exercises `read_state`/`refresh_state`/etc. with an explicit path instead.
+    Trivial pure function, low risk.
+  - **Consequence for the next planner:** don't trust a plan's guess at *which* source
+    line a bare line number refers to — line numbers drift and coverage tools don't carry
+    semantic labels. Re-derive from the current file before writing a test against a
+    numbered gap. Two of this phase's four "critical, do it" test instructions turned out
+    to already be satisfied by existing tests once the actual line was read.
+
 ## Carried forward from Phase 6d (community files, glossary, demo header)
 
 - **Any future maintenance script that runs `starling` and captures its output must
@@ -184,7 +227,7 @@ Carried forward from Phase 0 (`plans/starling-launch/00-history-and-rename.md`),
   `plans/starling-launch/01-package-skeleton.md` — Phase 5 must resolve it before any PyPI
   publish.
 - **This dev machine's hardcoded paths in `reader.py` point to a different Windows user**
-  (`C:\Users\user\...` vs. this machine's `C:\Users\etreq\...`), pre-existing and unchanged
+  (`C:\Users\user\...` vs. this machine's own profile directory), pre-existing and unchanged
   by Phase 1. `output_folder_path.mkdir()` raises `PermissionError` before the input-folder
   glob ever runs, so the plan's "empty `input/` → prints `No text files found.`" manual smoke
   test cannot actually be exercised end-to-end on this machine today. Phase 2 (path
