@@ -23,12 +23,11 @@ development install and in an installed wheel.
   edge detail disappears.
 - **Contrast:** must stay legible on both light and dark Windows title bars.
 
-## Dropping in the real icon
+## changing the icon
 
 1. Overwrite `resources/icons/starling.png`.
 2. Run `uv run python scripts/make_icon.py`.
-3. Delete `scripts/make_placeholder_png.py` and this warning banner.
-4. Commit both binaries. No Python source changes are required.
+3. Commit both binaries. No Python source changes are required.
 
 `make_icon.py` emits the standard Windows sizes: 16, 24, 32, 48, 64, 128, 256.
 `root.iconbitmap()` requires a real multi-size `.ico`; a renamed PNG will not work.
