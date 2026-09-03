@@ -4,12 +4,9 @@ Tests for scripts/make_demo_png.py.
 scripts/ is not an importable package (see the ``import_script`` fixture in
 conftest.py), so every test here loads the module fresh from its file path.
 
-Focus area: only the ``consola.ttf`` branch of ``_load_fonts``'s fallback
-chain has been exercised on the implementer's machine. Every font-loading
-call in this file is monkeypatched -- deliberately, so the whole suite stays
-deterministic on any machine (this dev box has consola.ttf but not
-DejaVuSansMono.ttf; a Linux CI runner is likely to have neither) instead of
-depending on ambient system fonts.
+Every font-loading call in this file is monkeypatched -- deliberately, so the
+whole suite stays deterministic on any machine, never depending on which
+font families happen to be installed where. See ``fake_truetype_factory``.
 """
 
 from __future__ import annotations
@@ -34,31 +31,31 @@ def demo_png(import_script: Callable[[str], ModuleType]) -> ModuleType:
 @pytest.fixture
 def fake_truetype_factory() -> Callable[..., Callable[..., ImageFont.FreeTypeFont]]:
     """
-    Build a fake ``ImageFont.truetype`` that blocks chosen filenames, aliases others.
+    Build a fake ``ImageFont.truetype`` that blocks chosen filenames, else substitutes a real font.
 
-    ``blocked`` filenames raise ``OSError`` (simulating "not installed on this
-    machine"). Filenames in ``alias_to`` are redirected to a real, genuinely
-    installed font file so the returned object is a real usable
-    ``FreeTypeFont`` -- exercising _load_fonts's actual branch-selection logic
-    without depending on which font families happen to exist on the runner.
-    Anything else (notably the absolute path ``ImageFont.load_default``
-    resolves internally) passes through untouched, so patching this at the
-    module level doesn't also break the default-font fallback itself.
+    ``blocked`` filenames raise ``OSError`` (simulating "not installed on this machine").
+    Every other named font resolves to Pillow's own bundled default font, resized via
+    ``font_variant`` -- a genuine ``FreeTypeFont``, but never dependent on which font
+    families happen to exist on the runner (a Windows dev box may have ``consola.ttf``;
+    Linux CI may have neither that nor ``DejaVuSansMono.ttf``). A file-like object (the
+    ``BytesIO`` ``ImageFont.load_default`` resolves internally) passes through to the real
+    loader untouched, so patching this at the module level doesn't also break the
+    default-font fallback itself. ``base_font`` is loaded here, before any patching, so
+    resizing it later never re-enters ``truetype`` and risks recursing into the fake.
     """
     real_truetype = ImageFont.truetype
+    base_font = ImageFont.load_default(size=10)
 
     def _factory(
         blocked: frozenset[str] = frozenset(),
-        alias_to: dict[str, str] | None = None,
     ) -> Callable[..., ImageFont.FreeTypeFont]:
-        alias_to = alias_to or {}
-
-        def _fake(name: str, size: int, *args: object, **kwargs: object) -> ImageFont.FreeTypeFont:
-            if name in blocked:
-                msg = f"simulated missing font: {name}"
-                raise OSError(msg)
-            real_name = alias_to.get(name, name)
-            return real_truetype(real_name, size, *args, **kwargs)
+        def _fake(name: object, size: int, *args: object, **kwargs: object) -> ImageFont.FreeTypeFont:
+            if isinstance(name, str):
+                if name in blocked:
+                    msg = f"simulated missing font: {name}"
+                    raise OSError(msg)
+                return base_font.font_variant(size=size)
+            return real_truetype(name, size, *args, **kwargs)
 
         return _fake
 
@@ -120,13 +117,7 @@ def test_load_fonts_falls_back_to_second_candidate_family(
 ) -> None:
     """Test that when consola is entirely unavailable, DejaVuSansMono is tried and used."""
     calls: list[str] = []
-    real_fake = fake_truetype_factory(
-        blocked=frozenset({"consola.ttf", "consolab.ttf"}),
-        alias_to={
-            "DejaVuSansMono.ttf": "consola.ttf",
-            "DejaVuSansMono-Bold.ttf": "consolab.ttf",
-        },
-    )
+    real_fake = fake_truetype_factory(blocked=frozenset({"consola.ttf", "consolab.ttf"}))
 
     def _tracking(name: str, size: int, *args: object, **kwargs: object) -> object:
         calls.append(name)
@@ -195,27 +186,13 @@ def test_load_fonts_propagates_the_requested_size_to_every_candidate(
 
 
 @pytest.mark.parametrize(
-    "branch",
+    "blocked",
     [
-        pytest.param((frozenset(), None), id="consola_branch"),
+        pytest.param(frozenset(), id="consola_branch"),
+        pytest.param(frozenset({"consola.ttf", "consolab.ttf"}), id="dejavu_branch"),
         pytest.param(
-            (
-                frozenset({"consola.ttf", "consolab.ttf"}),
-                {"DejaVuSansMono.ttf": "consola.ttf", "DejaVuSansMono-Bold.ttf": "consolab.ttf"},
-            ),
-            id="dejavu_branch",
-        ),
-        pytest.param(
-            (
-                frozenset(
-                    {
-                        "consola.ttf",
-                        "consolab.ttf",
-                        "DejaVuSansMono.ttf",
-                        "DejaVuSansMono-Bold.ttf",
-                    }
-                ),
-                None,
+            frozenset(
+                {"consola.ttf", "consolab.ttf", "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf"}
             ),
             id="load_default_branch",
         ),
@@ -226,11 +203,10 @@ def test_render_session_produces_a_valid_image_on_every_font_fallback_branch(
     demo_png: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     fake_truetype_factory: Callable[..., Callable[..., ImageFont.FreeTypeFont]],
-    branch: tuple[frozenset[str], dict[str, str] | None],
+    blocked: frozenset[str],
 ) -> None:
     """Test that each of the three documented font fallback branches still renders a real PNG."""
-    blocked, alias_to = branch
-    fake = fake_truetype_factory(blocked=blocked, alias_to=alias_to)
+    fake = fake_truetype_factory(blocked=blocked)
     monkeypatch.setattr(demo_png.ImageFont, "truetype", fake)
 
     output_path = tmp_path / "session.png"
