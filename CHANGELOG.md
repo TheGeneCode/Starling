@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `$1,300 million` → `1.3 billion dollars`) now happens in `read` instead of `capture`,
   so a `.txt` file placed in the input directory by hand gets the same conversion as one
   `capture` saved.
+- Updated `starling.png` and `starling.ico` icon files with new visuals.
+- Renamed capture window title from "Clipboard Capture" to "Starling Capture".
+
+### Removed
+
+- `scripts/make_placeholder_png.py` — icon generation script replaced with manually crafted assets.
 
 ## [0.1.0] - 2026-09-02
 
