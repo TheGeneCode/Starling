@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-03
+
 ### Added
 
-- README section **Staying on the Free Tier** — what each Google Cloud protection actually
+- README section **Staying on the Free Tier** â€” what each Google Cloud protection actually
   buys you, with console steps for a budget alert, a Text-to-Speech quota cap, and disabling
   the API between batches, plus what to do if a charge appears.
 - `starling read --confirm`: prints the `--dry-run` cost report, then asks before synthesizing.
@@ -18,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Number-to-words conversion (`1,234` → `one thousand two hundred and thirty-four`,
-  `$1,300 million` → `1.3 billion dollars`) now happens in `read` instead of `capture`,
+- Number-to-words conversion (`1,234` â†’ `one thousand two hundred and thirty-four`,
+  `$1,300 million` â†’ `1.3 billion dollars`) now happens in `read` instead of `capture`,
   so a `.txt` file placed in the input directory by hand gets the same conversion as one
   `capture` saved.
 - Updated `starling.png` and `starling.ico` icon files with new visuals.
@@ -27,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- `scripts/make_placeholder_png.py` — icon generation script replaced with manually crafted assets.
+- `scripts/make_placeholder_png.py` â€” icon generation script replaced with manually crafted assets.
 
 ## [0.1.0] - 2026-09-02
 
@@ -83,7 +85,8 @@ installable command-line tool.
 
 - test release
 
-[Unreleased]: https://github.com/TheGeneCode/Starling/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/TheGeneCode/Starling/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/TheGeneCode/Starling/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/TheGeneCode/Starling/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/TheGeneCode/Starling/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/TheGeneCode/Starling/releases/tag/v0.0.1
