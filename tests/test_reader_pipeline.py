@@ -337,6 +337,74 @@ def test_process_file_happy_path_writes_wav_and_logs_usage(
     assert "monthly total:" in log_content
 
 
+def test_process_file_synthesizes_number_converted_text(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    isolated_logging: None,
+) -> None:
+    """Test that process_file sends number-converted text to synthesize_speech, not digits."""
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
+        audio_content=b"\x00\x01"
+    )
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("There are 1,234 reasons.", encoding="utf-8")
+    usage_logger = reader.initialize_usage_logger(tmp_config.usage_log_path)
+
+    result = reader.process_file(
+        filepath,
+        client=fake_tts_client,
+        config=tmp_config,
+        voice_pool=("en-US-Chirp3-HD-Aoede",),
+        usage_logger=usage_logger,
+        logger=MagicMock(),
+        options=reader.ReadOptions(),
+    )
+
+    assert result is True
+    sent_text = fake_tts_client.synthesize_speech.call_args.kwargs["input"].text
+    assert "one thousand two hundred and thirty-four" in sent_text
+    assert "1,234" not in sent_text
+
+
+def test_process_file_number_conversion_error_is_caught_as_unexpected(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Test that a raise from convert_numbers_to_words is caught inside process_file.
+
+    convert_numbers_to_words now runs inside process_file's try block (composed with
+    remove_citations before the read result is used at all), so a failure there must
+    be routed through the same generic-Exception handler as any other synthesis-path
+    error, not crash process_file or leak past it.
+    """
+
+    def _raise(_text: str) -> str:
+        raise ValueError("boom")
+
+    monkeypatch.setattr(reader, "convert_numbers_to_words", _raise)
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+    logger = MagicMock()
+
+    result = reader.process_file(
+        filepath,
+        client=fake_tts_client,
+        config=tmp_config,
+        voice_pool=("en-US-Chirp3-HD-Aoede",),
+        usage_logger=MagicMock(),
+        logger=logger,
+        options=reader.ReadOptions(),
+    )
+
+    assert result is False
+    logger.exception.assert_called_once()
+    fake_tts_client.synthesize_speech.assert_not_called()
+    assert str(tmp_config.error_log_path) in capsys.readouterr().out
+
+
 def test_process_file_declined_overwrite_makes_no_api_call(
     tmp_config: StarlingConfig,
     fake_tts_client: MagicMock,
@@ -618,6 +686,50 @@ def test_plan_dry_run_skips_unreadable_file_but_continues_batch(
     assert "File error while processing" in capsys.readouterr().out
 
 
+def test_plan_dry_run_number_conversion_error_is_not_caught_as_per_file_error(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Document an asymmetry: plan_dry_run's per-file guard only catches OSError.
+
+    process_file wraps convert_numbers_to_words in a broad ``except Exception`` so a
+    conversion failure there degrades to one skipped file with a printed message
+    (see test_process_file_number_conversion_error_is_caught_as_unexpected).
+    plan_dry_run's read loop only catches ``OSError`` around the same
+    ``convert_numbers_to_words(remove_citations(...))`` composition — a non-OSError
+    raised there is *not* a per-file error, it propagates out of plan_dry_run and
+    aborts the whole dry-run batch instead of being reported and skipped like every
+    other per-file failure mode. This test pins today's actual behavior (propagation)
+    so a future fix that closes this gap fails loudly here instead of silently.
+    """
+
+    def _raise(_text: str) -> str:
+        raise ValueError("boom")
+
+    monkeypatch.setattr(reader, "convert_numbers_to_words", _raise)
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="boom"):
+        reader.plan_dry_run([filepath], tmp_config)
+
+
+def test_plan_dry_run_char_count_reflects_number_conversion(
+    tmp_config: StarlingConfig,
+) -> None:
+    """Test that plan_dry_run's char_count is measured after number-to-words conversion."""
+    raw = "There are 1,234 reasons."
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text(raw, encoding="utf-8")
+
+    entries = reader.plan_dry_run([filepath], tmp_config)
+
+    expected_text = reader.convert_numbers_to_words(reader.remove_citations(raw))
+    assert entries[0].char_count == len(expected_text)
+    assert entries[0].char_count != len(raw)
+
+
 def test_print_dry_run_empty_entries_reports_zero_totals(
     tmp_config: StarlingConfig,
     capsys: pytest.CaptureFixture[str],
@@ -757,7 +869,7 @@ def test_run_read_dry_run_does_not_archive_or_prompt(
 def test_run_read_dry_run_char_count_matches_what_read_bills(
     tmp_config: StarlingConfig,
 ) -> None:
-    """Test that the dry-run char count equals len(remove_citations(raw)), not len(raw)."""
+    """Test that dry-run char count equals convert_numbers_to_words(remove_citations(raw))."""
     raw = "A claim (Smith, 2020) with a footnote[1]."
     filepath = tmp_config.input_dir / "article.txt"
     filepath.write_text(raw, encoding="utf-8")
@@ -765,7 +877,7 @@ def test_run_read_dry_run_char_count_matches_what_read_bills(
     entries = reader.plan_dry_run([filepath], tmp_config)
 
     assert len(entries) == 1
-    expected = len(reader.remove_citations(raw))
+    expected = len(reader.convert_numbers_to_words(reader.remove_citations(raw)))
     assert entries[0].char_count == expected
     assert expected < len(raw)
 

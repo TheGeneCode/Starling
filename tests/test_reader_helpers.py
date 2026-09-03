@@ -13,11 +13,13 @@ import io
 import threading
 import wave
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from genekit.logging import dedicated_file_logger
+from num2words import num2words
 
+import starling.reader
 from starling import reader
 
 if TYPE_CHECKING:
@@ -65,6 +67,194 @@ if TYPE_CHECKING:
 def test_remove_citations(text: str, expected: str) -> None:
     """Test remove_citations against traditional citations, footnotes, and near-misses."""
     assert reader.remove_citations(text) == expected
+
+
+# ---------------------------------------------------------------------------
+# convert_numbers_to_words
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        pytest.param(
+            "$1,300 million", "1.3 billion dollars", id="million_rescaled_to_billion"
+        ),
+        pytest.param(
+            "$1,300 MILLION",
+            "1.3 billion dollars",
+            id="unit_matching_is_case_insensitive",
+        ),
+        pytest.param(
+            "$1 million",
+            "1 million dollars",
+            id="boundary_exactly_one_million_no_comma",
+        ),
+        pytest.param(
+            "$1,234.56",
+            "one thousand two hundred and thirty-four dollars fifty-six cents",
+            id="currency_with_cents",
+        ),
+        pytest.param(
+            "$1,000,000", "one million dollars", id="plain_currency_with_commas"
+        ),
+        pytest.param(
+            "1,234",
+            "one thousand two hundred and thirty-four",
+            id="plain_number_with_comma_no_dollar_sign",
+        ),
+        pytest.param("42", "42", id="number_without_comma_is_untouched"),
+        pytest.param("$0.99", "$0.99", id="currency_without_comma_group_is_untouched"),
+        pytest.param(
+            "-1,234",
+            "-one thousand two hundred and thirty-four",
+            id="minus_sign_preserved_outside_the_match",
+        ),
+    ],
+)
+def test_convert_numbers_to_words(text: str, expected: str) -> None:
+    """Test convert_numbers_to_words across currency scaling, plain numbers, and no-ops."""
+    assert reader.convert_numbers_to_words(text) == expected
+
+
+def test_convert_numbers_to_words_decimal_value_stays_in_million_branch() -> None:
+    """Test a non-integer scaled value that stays under 1e9 (nominal million branch)."""
+    result = reader.convert_numbers_to_words("$2.5 million")
+    assert result == "2.5 million dollars"
+
+
+def test_convert_numbers_to_words_million_scaled_just_under_billion_threshold() -> None:
+    """Test a large-but-still-billion-range scaled value, just below the trillion defect."""
+    result = reader.convert_numbers_to_words("$500,000 million")
+    assert result == "500 billion dollars"
+
+
+def test_convert_numbers_to_words_sub_one_million_value_loses_unit_label() -> None:
+    """
+    Document a second boundary defect: a "million" value scaled below 1e6 drops its unit.
+
+    ``scale_currency``'s final ``else`` branch (comment: "Should be rare for million+
+    inputs") sets ``new_unit = ""`` when the scaled total is under 1e6. That branch is
+    reachable whenever the numeric value in front of "million" is itself less than 1
+    (e.g. "$0.5 million" scales to 500,000, which is under 1e6). The result drops the
+    unit word entirely and leaves a double space where it used to sit, since
+    ``f"{val_fmt} {new_unit} dollars".strip()`` only trims the ends, not the interior.
+    """
+    result = reader.convert_numbers_to_words("$0.5 million")
+    assert result == "500000  dollars"
+
+
+def test_convert_numbers_to_words_beyond_billion_mislabels_as_billion() -> None:
+    """
+    Document a boundary defect: scaled values >= 1e12 are still labeled 'billion'.
+
+    ``scale_currency`` only ever re-labels the output as 'million' or
+    'billion' — there's no branch for 'trillion' even though 'trillion' is
+    an accepted *input* unit and a large-enough 'million'/'billion' input
+    can scale past 1e12. "$1,300,000 million" is 1.3 trillion, but the
+    function emits "1300 billion dollars" instead of "1.3 trillion dollars".
+    """
+    result = reader.convert_numbers_to_words("$1,300,000 million")
+    assert result == "1300 billion dollars"
+
+
+def test_convert_numbers_to_words_malformed_value_falls_back_to_original() -> None:
+    """Test that text with no comma-grouped numbers passes through unmodified."""
+    text = "The year 2020 had 42 events."
+    assert reader.convert_numbers_to_words(text) == text
+
+
+def test_convert_numbers_to_words_bare_dollar_sign_with_no_digits() -> None:
+    """Test that a bare '$' with no digit group is left untouched by every regex branch."""
+    text = "Costs $ and more $ signs."
+    assert reader.convert_numbers_to_words(text) == text
+
+
+def test_convert_numbers_to_words_text_with_no_numbers_at_all() -> None:
+    """Test that text with no numerals passes through unchanged."""
+    text = "No numerals here whatsoever."
+    assert reader.convert_numbers_to_words(text) == text
+
+
+def test_convert_numbers_to_words_decimal_currency_with_commas() -> None:
+    """Test decimal currency against num2words directly, not a hard-coded locale string."""
+    expected = num2words(1234.56, to="currency", currency="USD")
+    expected = expected.removesuffix(", zero cents").replace(",", "")
+    assert reader.convert_numbers_to_words("$1,234.56") == expected
+
+
+def test_currency_to_words_falls_back_when_num2words_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that currency_to_words returns the original match when num2words raises."""
+
+    def raiser(*args: Any, **kwargs: Any) -> None:
+        raise ValueError("boom")
+
+    monkeypatch.setattr(starling.reader, "num2words", raiser)
+    assert reader.convert_numbers_to_words("$1,000") == "$1,000"
+
+
+def test_number_to_words_falls_back_when_num2words_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that number_to_words returns the original match when num2words raises."""
+
+    def raiser(*args: Any, **kwargs: Any) -> None:
+        raise ValueError("boom")
+
+    monkeypatch.setattr(starling.reader, "num2words", raiser)
+    assert reader.convert_numbers_to_words("1,000 people") == "1,000 people"
+
+
+def test_convert_numbers_to_words_astronomical_scale_mislabels_as_infinity() -> None:
+    r"""
+    Document a third boundary defect: a value so large the scaling overflows to inf.
+
+    ``scale_currency`` has no upper guard on the digit group matched by ``\d+``
+    (unbounded repetition), so a large-enough literal times a ``multipliers[unit]``
+    float produces ``float("inf")``. ``float("inf").is_integer()`` is ``False`` (it
+    doesn't raise), so execution falls into the same formatting path as any other
+    non-integer scaled value and silently emits the literal word "inf" instead of
+    raising or reporting an out-of-range condition.
+    """
+    result = reader.convert_numbers_to_words("$" + "9" * 320 + " trillion")
+    assert result == "inf billion dollars"
+
+
+def test_convert_numbers_to_words_unicode_digits_are_converted_without_raising() -> None:
+    r"""
+    Test that non-ASCII Unicode decimal digits (regex ``\d``) do not crash conversion.
+
+    Python's ``\\d`` matches every Unicode ``Nd``-category digit, not just ASCII
+    0-9, and both ``int()`` and ``float()`` parse them. A plain-number match built
+    entirely from Arabic-Indic digits must still convert cleanly instead of hitting
+    an unhandled exception in ``number_to_words``.
+    """
+    result = reader.convert_numbers_to_words("٢٣٤,٥٦٧")
+    assert result == "two hundred and thirty-four thousand five hundred and sixty-seven"
+
+
+def test_convert_numbers_to_words_then_chunking_crosses_byte_boundary_after_expansion() -> None:
+    """
+    Test the byte-vs-character combination boundary the handoff calls out.
+
+    Two short sentences whose *raw* digit form fits in a single 60-byte chunk
+    expand, once spelled out as words, to a byte length that no longer fits —
+    ``split_text_into_chunks`` must see 2 chunks for the converted text even
+    though the untouched raw text would only ever need 1. This pins the
+    invariant that chunk counting always runs on the post-conversion text
+    (matching how ``plan_dry_run`` and ``process_file`` compose the two calls),
+    not on the original digits.
+    """
+    raw = "There are 1,234 reasons. There are 5,678 more reasons."
+    converted = reader.convert_numbers_to_words(reader.remove_citations(raw))
+
+    raw_chunks = reader.split_text_into_chunks(raw, max_bytes=60)
+    converted_chunks = reader.split_text_into_chunks(converted, max_bytes=60)
+
+    assert len(raw_chunks) == 1
+    assert len(converted_chunks) == 2
 
 
 # ---------------------------------------------------------------------------

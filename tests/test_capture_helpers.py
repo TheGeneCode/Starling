@@ -7,12 +7,9 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from num2words import num2words
 
-import starling.capture
 from starling.capture import (
     console_executable,
-    convert_numbers_to_words,
     make_filename_ready,
     refine_text,
     run_article_reader,
@@ -103,144 +100,6 @@ def test_shorten_text_max_length_below_three_produces_output_longer_than_max_len
 
 
 # ---------------------------------------------------------------------------
-# convert_numbers_to_words
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        pytest.param(
-            "$1,300 million", "1.3 billion dollars", id="million_rescaled_to_billion"
-        ),
-        pytest.param(
-            "$1,300 MILLION",
-            "1.3 billion dollars",
-            id="unit_matching_is_case_insensitive",
-        ),
-        pytest.param(
-            "$1 million",
-            "1 million dollars",
-            id="boundary_exactly_one_million_no_comma",
-        ),
-        pytest.param(
-            "$1,234.56",
-            "one thousand two hundred and thirty-four dollars fifty-six cents",
-            id="currency_with_cents",
-        ),
-        pytest.param(
-            "$1,000,000", "one million dollars", id="plain_currency_with_commas"
-        ),
-        pytest.param(
-            "1,234",
-            "one thousand two hundred and thirty-four",
-            id="plain_number_with_comma_no_dollar_sign",
-        ),
-        pytest.param("42", "42", id="number_without_comma_is_untouched"),
-        pytest.param("$0.99", "$0.99", id="currency_without_comma_group_is_untouched"),
-        pytest.param(
-            "-1,234",
-            "-one thousand two hundred and thirty-four",
-            id="minus_sign_preserved_outside_the_match",
-        ),
-    ],
-)
-def test_convert_numbers_to_words(text: str, expected: str) -> None:
-    """Test convert_numbers_to_words across currency scaling, plain numbers, and no-ops."""
-    assert convert_numbers_to_words(text) == expected
-
-
-def test_convert_numbers_to_words_decimal_value_stays_in_million_branch() -> None:
-    """Test a non-integer scaled value that stays under 1e9 (nominal million branch)."""
-    result = convert_numbers_to_words("$2.5 million")
-    assert result == "2.5 million dollars"
-
-
-def test_convert_numbers_to_words_million_scaled_just_under_billion_threshold() -> None:
-    """Test a large-but-still-billion-range scaled value, just below the trillion defect."""
-    result = convert_numbers_to_words("$500,000 million")
-    assert result == "500 billion dollars"
-
-
-def test_convert_numbers_to_words_sub_one_million_value_loses_unit_label() -> None:
-    """
-    Document a second boundary defect: a "million" value scaled below 1e6 drops its unit.
-
-    ``scale_currency``'s final ``else`` branch (comment: "Should be rare for million+
-    inputs") sets ``new_unit = ""`` when the scaled total is under 1e6. That branch is
-    reachable whenever the numeric value in front of "million" is itself less than 1
-    (e.g. "$0.5 million" scales to 500,000, which is under 1e6). The result drops the
-    unit word entirely and leaves a double space where it used to sit, since
-    ``f"{val_fmt} {new_unit} dollars".strip()`` only trims the ends, not the interior.
-    """
-    result = convert_numbers_to_words("$0.5 million")
-    assert result == "500000  dollars"
-
-
-def test_convert_numbers_to_words_beyond_billion_mislabels_as_billion() -> None:
-    """
-    Document a boundary defect: scaled values >= 1e12 are still labeled 'billion'.
-
-    ``scale_currency`` only ever re-labels the output as 'million' or
-    'billion' — there's no branch for 'trillion' even though 'trillion' is
-    an accepted *input* unit and a large-enough 'million'/'billion' input
-    can scale past 1e12. "$1,300,000 million" is 1.3 trillion, but the
-    function emits "1300 billion dollars" instead of "1.3 trillion dollars".
-    """
-    result = convert_numbers_to_words("$1,300,000 million")
-    assert result == "1300 billion dollars"
-
-
-def test_convert_numbers_to_words_malformed_value_falls_back_to_original() -> None:
-    """Test that text with no comma-grouped numbers passes through unmodified."""
-    text = "The year 2020 had 42 events."
-    assert convert_numbers_to_words(text) == text
-
-
-def test_convert_numbers_to_words_bare_dollar_sign_with_no_digits() -> None:
-    """Test that a bare '$' with no digit group is left untouched by every regex branch."""
-    text = "Costs $ and more $ signs."
-    assert convert_numbers_to_words(text) == text
-
-
-def test_convert_numbers_to_words_text_with_no_numbers_at_all() -> None:
-    """Test that text with no numerals passes through unchanged."""
-    text = "No numerals here whatsoever."
-    assert convert_numbers_to_words(text) == text
-
-
-def test_convert_numbers_to_words_decimal_currency_with_commas() -> None:
-    """Test decimal currency against num2words directly, not a hard-coded locale string."""
-    expected = num2words(1234.56, to="currency", currency="USD")
-    expected = expected.removesuffix(", zero cents").replace(",", "")
-    assert convert_numbers_to_words("$1,234.56") == expected
-
-
-def test_currency_to_words_falls_back_when_num2words_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test that currency_to_words returns the original match when num2words raises."""
-
-    def raiser(*args: Any, **kwargs: Any) -> None:
-        raise ValueError("boom")
-
-    monkeypatch.setattr(starling.capture, "num2words", raiser)
-    assert convert_numbers_to_words("$1,000") == "$1,000"
-
-
-def test_number_to_words_falls_back_when_num2words_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test that number_to_words returns the original match when num2words raises."""
-
-    def raiser(*args: Any, **kwargs: Any) -> None:
-        raise ValueError("boom")
-
-    monkeypatch.setattr(starling.capture, "num2words", raiser)
-    assert convert_numbers_to_words("1,000 people") == "1,000 people"
-
-
-# ---------------------------------------------------------------------------
 # refine_text
 # ---------------------------------------------------------------------------
 
@@ -281,12 +140,6 @@ def test_refine_text_stops_at_latest_news_marker_line() -> None:
     """Test the second discard-line marker, 'THE LATEST NEWS', behaves like 'For more'."""
     result = refine_text("Line one\nTHE LATEST NEWS\nLine three\n")
     assert result == "Line one\n"
-
-
-def test_refine_text_converts_embedded_numbers() -> None:
-    """Test that refine_text applies convert_numbers_to_words to the surviving text."""
-    result = refine_text("There are $1,300 million reasons.")
-    assert result == "There are 1.3 billion dollars reasons."
 
 
 def test_refine_text_no_discard_markers_present() -> None:

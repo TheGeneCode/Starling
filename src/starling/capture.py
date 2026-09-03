@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 import pyperclip
-from num2words import num2words
 
 from starling.config import (
     ConfigError,
@@ -50,90 +49,6 @@ def make_filename_ready(filename: str) -> str:
     return re.sub(r"[^" + valid_chars + "]", "", filename)
 
 
-def convert_numbers_to_words(text: str) -> str:
-    """Convert numbers to words in the text, handling currency scaling and formatting."""
-
-    # 1. Handle "X million/billion" currency scaling
-    # Pattern: $1,300 million -> 1.3 billion dollars
-    def scale_currency(match):
-        val_str = match.group(1).replace(",", "")
-        unit = match.group(2).lower()
-        val = float(val_str)
-
-        multipliers = {
-            "million": 1e6,
-            "billion": 1e9,
-            "trillion": 1e12,
-        }
-
-        if unit in multipliers:
-            total_val = val * multipliers[unit]
-
-            # Determine new unit
-            if total_val >= 1e9:
-                new_val = total_val / 1e9
-                new_unit = "billion"
-            elif total_val >= 1e6:
-                new_val = total_val / 1e6
-                new_unit = "million"
-            else:
-                new_val = total_val
-                new_unit = ""  # Should be rare for million+ inputs
-
-            # Format: 1.3 billion dollars
-            if new_val.is_integer():
-                val_fmt = f"{int(new_val)}"
-            else:
-                val_fmt = f"{new_val:.1f}".rstrip("0").rstrip(".")
-
-            return f"{val_fmt} {new_unit} dollars".strip()
-
-        return match.group(0)
-
-    # Regex for $X million/billion
-    text = re.sub(
-        r"\$(\d+(?:,\d{3})*(?:\.\d+)?)\s+(million|billion|trillion)",
-        scale_currency,
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # 2. Handle simple currency ($1,234.56 -> one thousand... dollars and fifty-six cents)
-    def currency_to_words(match):
-        val_str = match.group(1).replace(",", "")
-        try:
-            val = float(val_str)
-            words = num2words(val, to="currency", currency="USD")
-            # Remove ", zero cents" if present
-            words = words.removesuffix(", zero cents")
-            return words.replace(",", "")  # Remove commas in words
-        except Exception:
-            return match.group(0)
-
-    # Regex for $X (where X has at least one comma)
-    text = re.sub(r"\$(\d{1,3}(?:,\d{3})+(?:\.\d+)?)", currency_to_words, text)
-
-    # 3. Handle plain numbers with commas (1,234 -> one thousand...)
-    def number_to_words(match):
-        val_str = match.group(0).replace(",", "")
-        try:
-            val = int(val_str)  # num2words handles ints best for cardinal
-            return num2words(val).replace(",", "")
-        except Exception:
-            try:
-                val = float(val_str)
-                return num2words(val).replace(",", "")
-            except Exception:
-                return match.group(0)
-
-    # Regex for X,XXX... (at least one comma)
-    return re.sub(
-        r"(?<![\$\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d])",
-        number_to_words,
-        text,
-    )
-
-
 def refine_text(text: str) -> str:
     text = re.sub(r"\[\d+\]", "", text)
     discard_after_strings = ["Related:"]
@@ -144,9 +59,6 @@ def refine_text(text: str) -> str:
     )  # -1 if none found
     if discard_index >= 0:
         text = text[:discard_index]
-
-    # Convert numbers to words
-    text = convert_numbers_to_words(text)
 
     # Search for whole lines that are not wanted and discard everything after
     lines = text.splitlines(keepends=True)

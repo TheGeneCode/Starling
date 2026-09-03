@@ -253,11 +253,9 @@ You can skip `capture` entirely and drop `.txt` files into the input directory y
 |---|---|---|
 | Footnote markers | `capture`, on save | `[1]`, `[2]` … removed |
 | Boilerplate truncation | `capture`, on save | Everything from the first `Related:` onward is dropped, as is everything from a line reading exactly `For more` or `THE LATEST NEWS` |
-| **Numbers to words** | `capture`, on save | `1,234` → `one thousand two hundred and thirty-four`; `$1,300 million` → `1.3 billion dollars`, so figures are spoken naturally rather than digit by digit |
 | Citation removal | `read`, per file | Parenthetical academic citations such as `(Author, 2020, p. 14)` and any remaining `[n]` markers |
+| **Numbers to words** | `read`, per file | `1,234` → `one thousand two hundred and thirty-four`; `$1,300 million` → `1.3 billion dollars`, so figures are spoken naturally rather than digit by digit |
 | Chunking | `read`, per file | Split at sentence boundaries into pieces of at most **4,500 UTF-8 bytes** |
-
-**Number-to-words conversion happens in `capture`, not in `read`.** A `.txt` you place in the input directory by hand is chunked and citation-stripped but **not** number-converted, so digits in it are spoken as digits.
 
 ### Chunking and the API limit
 

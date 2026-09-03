@@ -43,6 +43,7 @@ def test_reader_exposes_pure_helpers() -> None:
     reader = starling.reader
     helpers = [
         "remove_citations",
+        "convert_numbers_to_words",
         "split_text_into_chunks",
         "combine_audio_chunks",
         "get_monthly_total",
@@ -132,7 +133,6 @@ def test_capture_exposes_public_surface() -> None:
         "console_executable",
         "update_entry",
         "make_filename_ready",
-        "convert_numbers_to_words",
         "refine_text",
         "shorten_text",
     ]
