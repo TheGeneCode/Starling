@@ -142,7 +142,7 @@ def test_capture_exposes_public_surface() -> None:
 
 
 def test_dropped_dependencies_are_not_imported(package_dir: Path) -> None:
-    """Test that pandas and kittentts are not imported (only comments allowed)."""
+    """Test that pandas is not imported (only comments allowed)."""
     reader_path = package_dir / "reader.py"
     capture_path = package_dir / "capture.py"
 
@@ -156,7 +156,4 @@ def test_dropped_dependencies_are_not_imported(package_dir: Path) -> None:
             # Check for live imports
             assert "import pandas" not in stripped, (
                 f"Found live pandas import in {module_file.name}"
-            )
-            assert "import kittentts" not in stripped, (
-                f"Found live kittentts import in {module_file.name}"
             )

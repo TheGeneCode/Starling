@@ -44,8 +44,6 @@ if TYPE_CHECKING:
 
     from starling.config import StarlingConfig
 
-# from kittentts import KittenTTS
-
 CONFIG = load_config()
 USAGE_LOG_PATH = CONFIG.usage_log_path
 ERROR_LOG_PATH = CONFIG.error_log_path

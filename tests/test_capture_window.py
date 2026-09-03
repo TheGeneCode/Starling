@@ -54,7 +54,7 @@ def test_capture_window_construction_builds_two_entries(
 
     assert isinstance(window.entry1, tk.Entry)
     assert isinstance(window.entry2, tk.Entry)
-    assert tk_root.title() == "Fast Article Copy"
+    assert tk_root.title() == "Starling Capture"
 
 
 def test_capture_window_default_on_close_is_run_article_reader() -> None:

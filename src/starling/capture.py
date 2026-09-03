@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 POLL_INTERVAL_MS: Final = 100
 WINDOW_GEOMETRY: Final = "500x90"
-WINDOW_TITLE: Final = "Fast Article Copy"
+WINDOW_TITLE: Final = "Starling Capture"
 ENTRY_MAX_LENGTH: Final = 92
 ICON_PACKAGE: Final = "starling"
 ICON_RESOURCE: Final = ("resources", "starling.ico")
