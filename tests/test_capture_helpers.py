@@ -289,3 +289,38 @@ def test_run_article_reader_non_windows_uses_zero_creationflags(
 
     assert captured["argv"] == [sys.executable, "-m", "starling", "read"]
     assert captured["kwargs"] == {"creationflags": 0}
+
+
+def test_run_article_reader_appends_confirm_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that confirm=True appends --confirm to argv."""
+    captured: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **kwargs: Any) -> None:
+        captured["argv"] = argv
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    run_article_reader(confirm=True)
+
+    assert captured["argv"] == [sys.executable, "-m", "starling", "read", "--confirm"]
+
+
+def test_run_article_reader_omits_confirm_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that confirm=False (default) does not append --confirm to argv."""
+    captured: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **kwargs: Any) -> None:
+        captured["argv"] = argv
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    run_article_reader()
+
+    assert captured["argv"] == [sys.executable, "-m", "starling", "read"]
+    assert "--confirm" not in captured["argv"]

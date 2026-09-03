@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README section **Staying on the Free Tier** — what each Google Cloud protection actually
   buys you, with console steps for a budget alert, a Text-to-Speech quota cap, and disabling
   the API between batches, plus what to do if a charge appears.
+- `starling read --confirm`: prints the `--dry-run` cost report, then asks before synthesizing.
+- `STARLING_CAPTURE_CONFIRM`: when set, `starling capture` launches the reader with `--confirm`
+  instead of synthesizing immediately. Off by default; existing behavior is unchanged.
 
 ### Changed
 

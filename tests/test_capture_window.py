@@ -326,8 +326,9 @@ def test_run_capture_returns_zero_and_runs_window_on_success(
     calls: dict[str, object] = {}
 
     class FakeWindow:
-        def __init__(self, config: StarlingConfig) -> None:
+        def __init__(self, config: StarlingConfig, **kwargs: object) -> None:
             calls["config"] = config
+            calls["kwargs"] = kwargs
 
         def run(self) -> None:
             calls["ran"] = True
@@ -353,3 +354,77 @@ def test_run_capture_lets_unexpected_exception_propagate(
 
     with pytest.raises(RuntimeError, match="disk full"):
         starling.capture.run_capture(tmp_config)
+
+
+def test_run_capture_wires_on_close_from_config_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_config: StarlingConfig
+) -> None:
+    """Test that run_capture wires on_close from config.capture_confirm via partial."""
+    import subprocess
+    from dataclasses import replace
+    from typing import Any
+
+    calls: dict[str, object] = {}
+    config = replace(tmp_config, capture_confirm=True)
+
+    class FakeWindow:
+        def __init__(self, config: StarlingConfig, **kwargs: object) -> None:
+            calls["on_close"] = kwargs.get("on_close")
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr(starling.capture, "CaptureWindow", FakeWindow)
+
+    captured_popen: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **kwargs: Any) -> None:
+        captured_popen["argv"] = argv
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    result = starling.capture.run_capture(config)
+
+    # Invoke the captured on_close callback and verify it produces argv with --confirm
+    assert result == 0
+    on_close = calls.get("on_close")
+    assert callable(on_close)
+    on_close()
+    assert "--confirm" in captured_popen["argv"]
+
+
+def test_run_capture_on_close_omits_flag_when_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_config: StarlingConfig
+) -> None:
+    """Test that run_capture omits --confirm from on_close when capture_confirm=False."""
+    import subprocess
+    from dataclasses import replace
+    from typing import Any
+
+    calls: dict[str, object] = {}
+    config = replace(tmp_config, capture_confirm=False)
+
+    class FakeWindow:
+        def __init__(self, config: StarlingConfig, **kwargs: object) -> None:
+            calls["on_close"] = kwargs.get("on_close")
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr(starling.capture, "CaptureWindow", FakeWindow)
+
+    captured_popen: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **kwargs: Any) -> None:
+        captured_popen["argv"] = argv
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    result = starling.capture.run_capture(config)
+
+    # Invoke the captured on_close callback and verify it produces argv without --confirm
+    assert result == 0
+    on_close = calls.get("on_close")
+    assert callable(on_close)
+    on_close()
+    assert "--confirm" not in captured_popen["argv"]

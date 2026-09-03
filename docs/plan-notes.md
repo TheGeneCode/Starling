@@ -1,5 +1,30 @@
 # Notes for future plans
 
+## Carried forward from capture-confirm-before-read (2026-09-03)
+
+- **`StarlingConfig` is `frozen=True, slots=True` with every field required (no defaults)
+  by convention** — `capture_confirm` was added as the last field, deliberately with no
+  default, so every construction site (`load_config`, `tmp_config` fixture, any future
+  caller) must pass it explicitly rather than silently defaulting a flag that gates
+  billing. Any future field addition to this dataclass should follow the same
+  last-position, no-default pattern.
+- **A `starling capture`-only toggle is wired through as an argument to the launched
+  child process, not read by the child's own default path.** `run_read` never reads
+  `config.capture_confirm` — the flag only reaches the reader via the explicit
+  `--confirm` CLI flag that `capture.py` appends to argv. If a future feature needs
+  "capture behaves differently" without a public flag, this precedent doesn't apply;
+  it was chosen here specifically because capture spawns the reader as a **separate
+  console process**, so any prompt/state has to cross that process boundary via argv,
+  not in-memory.
+- **`_env_flag()` in `config.py` is now the general STARLING_* boolean-flag parser**
+  (accepts `true/false/1/0/yes/no/on/off`, raises `ConfigError` on garbage rather than
+  silently defaulting). Any future boolean env var should reuse it instead of
+  reimplementing `update_check.py`'s older inline pattern.
+- **Two flags that must never combine are enforced with an argparse mutually exclusive
+  group**, not a post-parse `if both: error` check — `--dry-run`/`--confirm` on `read`.
+  Prefer this pattern for future flag pairs with the same "these can never both be
+  true" relationship.
+
 ## Carried forward from Phase 7 (pre-publish audit)
 
 - **Coverage baseline held at 428 passed / 98% total, unchanged from the pre-planning

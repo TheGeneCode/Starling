@@ -516,3 +516,104 @@ def test_load_config_skips_dotenv_when_disabled(
     with pytest.raises(AssertionError, match="dotenv should not be called"):
         config.load_config(use_dotenv=True)
     assert call_count["dotenv"] == 1
+
+
+# ---------------------------------------------------------------------------
+# capture_confirm
+# ---------------------------------------------------------------------------
+
+
+def test_capture_confirm_defaults_to_false(
+    clean_env: None,
+) -> None:
+    """Verify that capture_confirm defaults to False when STARLING_CAPTURE_CONFIRM is unset."""
+    cfg = config.load_config(use_dotenv=False)
+
+    assert cfg.capture_confirm is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("true", id="true"),
+        pytest.param("TRUE", id="uppercase"),
+        pytest.param("1", id="one"),
+        pytest.param("yes", id="yes"),
+        pytest.param("on", id="on"),
+        pytest.param(" true ", id="whitespace_trimmed"),
+    ],
+)
+def test_capture_confirm_accepts_truthy_spellings(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Verify that capture_confirm accepts true/TRUE/1/yes/on with whitespace trimming."""
+    monkeypatch.setenv("STARLING_CAPTURE_CONFIRM", value)
+
+    cfg = config.load_config(use_dotenv=False)
+
+    assert cfg.capture_confirm is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("false", id="false"),
+        pytest.param("0", id="zero"),
+        pytest.param("no", id="no"),
+        pytest.param("off", id="off"),
+        pytest.param("", id="empty_string"),
+    ],
+)
+def test_capture_confirm_accepts_falsey_spellings(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Verify that capture_confirm accepts false/0/no/off and blank as False."""
+    monkeypatch.setenv("STARLING_CAPTURE_CONFIRM", value)
+
+    cfg = config.load_config(use_dotenv=False)
+
+    assert cfg.capture_confirm is False
+
+
+def test_capture_confirm_rejects_unknown_value(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that an unrecognized STARLING_CAPTURE_CONFIRM value raises ConfigError."""
+    monkeypatch.setenv("STARLING_CAPTURE_CONFIRM", "maybe")
+
+    with pytest.raises(config.ConfigError) as exc_info:
+        config.load_config(use_dotenv=False)
+
+    assert "STARLING_CAPTURE_CONFIRM" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("tr ue", id="internal_whitespace_in_truthy_lookalike"),
+        pytest.param("fal se", id="internal_whitespace_in_falsey_lookalike"),
+        pytest.param("2", id="numeric_but_not_one_or_zero"),
+        pytest.param("-1", id="negative_number"),
+        pytest.param("1.0", id="float_looking_value"),
+        pytest.param(chr(0x0661), id="arabic_indic_digit_one_lookalike"),
+        pytest.param("y" * 5000, id="very_long_garbage_string"),
+    ],
+)
+def test_capture_confirm_rejects_boundary_garbage_values(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """
+    Verify _env_flag rejects near-miss values rather than silently defaulting.
+
+    TRUTHY_VALUES/FALSEY_VALUES are frozensets of exact ASCII spellings, so anything
+    that merely *looks* like a valid flag -- a stray internal space, a numeral other
+    than 1/0, a Unicode digit that ``str.casefold()`` does not normalize to ASCII "1",
+    or a long garbage string -- must raise ConfigError rather than silently falling
+    back to a boolean. A typo in a flag that gates billing must not read as "off".
+    """
+    monkeypatch.setenv("STARLING_CAPTURE_CONFIRM", value)
+
+    with pytest.raises(config.ConfigError) as exc_info:
+        config.load_config(use_dotenv=False)
+
+    assert "STARLING_CAPTURE_CONFIRM" in str(exc_info.value)

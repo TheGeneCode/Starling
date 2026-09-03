@@ -15,6 +15,7 @@ import contextlib
 import re
 import subprocess
 import sys
+from functools import partial
 from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -103,12 +104,21 @@ def console_executable() -> str:
     return sys.executable
 
 
-def run_article_reader() -> None:
-    """Launch the reader in a new process using the interpreter running this app."""
+def run_article_reader(*, confirm: bool = False) -> None:
+    """
+    Launch the reader in a new process using the interpreter running this app.
+
+    ``confirm`` appends ``--confirm``, so the child prints the dry-run cost report and
+    asks before it bills anything. The prompt has to live in the child: this is a new
+    console, and the Tk window is already being torn down when this is called.
+    """
     creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+    argv = [console_executable(), "-m", "starling", "read"]
+    if confirm:
+        argv.append("--confirm")
     # S603: the argv is this app's own interpreter and module name, not user input.
     subprocess.Popen(  # noqa: S603
-        [console_executable(), "-m", "starling", "read"],
+        argv,
         creationflags=creationflags,
     )
 
@@ -261,7 +271,10 @@ def run_capture(config: StarlingConfig | None = None) -> int:
         print(f"Error: {exc}")
         return 1
     try:
-        window = CaptureWindow(config)
+        window = CaptureWindow(
+            config,
+            on_close=partial(run_article_reader, confirm=config.capture_confirm),
+        )
     except tk.TclError as exc:
         print(
             "Error: could not open the capture window. Starling's capture UI needs a "

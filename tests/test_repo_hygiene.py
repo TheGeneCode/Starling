@@ -318,6 +318,14 @@ def test_env_example_documents_the_update_check_optout() -> None:
     assert UPDATE_CHECK_VAR in env_example
 
 
+def test_env_example_documents_capture_confirm() -> None:
+    """Verify that .env.example and README.md both mention STARLING_CAPTURE_CONFIRM."""
+    env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "STARLING_CAPTURE_CONFIRM" in env_example
+    assert "STARLING_CAPTURE_CONFIRM" in readme
+
+
 # ---------------------------------------------------------------------------
 # _require_git / _run_git_checked -- the git-invoking tests must fail loudly,
 # not silently pass, when git itself is broken rather than merely absent.

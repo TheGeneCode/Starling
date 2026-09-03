@@ -10,7 +10,7 @@ Read saved articles aloud. Starling turns `.txt` articles into narrated `.wav` f
 
 > Starling is a personal-use command-line tool. It calls **your own** Google Cloud account and **you are billed for what you synthesize** — read [What It Costs](#what-it-costs) before your first run. Not affiliated with Google.
 
-💛 [Sponsor this project](https://github.com/sponsors/TheGeneCode)
+💛 [Sponsor the dev](https://github.com/sponsors/TheGeneCode)
 
 ---
 
@@ -45,6 +45,7 @@ Starling reads plain-text articles you have saved and narrates them into `.wav` 
 | **Random voice per article** | Picks a different voice from a pool for each article by default, so a batch doesn't sound identical file after file |
 | **Free voice validation** | Every configured voice name is checked against Google's live catalog before anything is billed |
 | **`--dry-run` cost preview** | Reports exactly what a run would synthesize and bill, with no API calls and no credentials needed |
+| **Confirm before reading** | `starling read --confirm` (or `STARLING_CAPTURE_CONFIRM=true`) previews the cost, then asks y/n before calling Google |
 | **Usage log with running total** | Every synthesis appends a line with the character count and the month's running total |
 | **Automatic chunking** | Long articles are split at sentence boundaries to stay under Google's per-request byte limit |
 | **Archiving** | A successfully synthesized input moves to the archive directory, so a batch is safe to re-run |
@@ -241,7 +242,7 @@ gets no IAM roles, for the same reason.
 `starling read --dry-run` reports each file's character count, the month's running total, and
 what the month would total afterwards. It makes no API calls and needs no credentials, so it
 cannot cost anything — and it is the only control here that catches the mistake *before* it
-happens. See [Keeping Track](#keeping-track).
+happens. You can use `--dry-run` capabilities in conjunction with `capture` by setting `STARLING_CAPTURE_CONFIRM=true` in your `.env` file. See [Keeping Track](#keeping-track).
 
 ### 3. Set a budget alert so you hear about it fast
 
@@ -437,7 +438,7 @@ Bare `starling` (no subcommand) is shorthand for `starling read`. A leading `-h`
 
 | Command | What it does |
 |---|---|
-| `starling read [--input-dir PATH] [-y\|--yes\|--overwrite] [--dry-run]` | Synthesize every `.txt` in the input directory. The default command. |
+| `starling read [--input-dir PATH] [-y\|--yes\|--overwrite] [--dry-run\|--confirm]` | Synthesize every `.txt` in the input directory. The default command. |
 | `starling capture` | Open the clipboard-capture window that saves articles into the input directory. |
 | `starling voices [LANGUAGE_CODE]` | List the Google voices available for a language (defaults to `STARLING_LANGUAGE_CODE`). |
 | `starling usage` | Print this month's character total from the usage log. |
@@ -446,6 +447,7 @@ Bare `starling` (no subcommand) is shorthand for `starling read`. A leading `-h`
 - `--input-dir PATH` — read `.txt` files from `PATH` for this run instead of `STARLING_INPUT_DIR`.
 - `-y`, `--yes`, `--overwrite` — overwrite an existing `.wav` without prompting.
 - `--dry-run` — report what would be synthesized and billed, without calling Google or needing credentials.
+- `--confirm` — print the dry-run report, then ask before synthesizing for real. (Mutually exclusive with `--dry-run`.)
 
 `Ctrl-C` exits cleanly with status 130.
 
@@ -468,6 +470,7 @@ Starling reads a `.env` file **from the directory you run it in**, and `.env` va
 | `STARLING_VOICE_MODE` | `random` | `random` (draw from the pool per article) or `fixed`. |
 | `STARLING_VOICE_NAME` | `en-US-Chirp3-HD-Enceladus` | The voice used when `STARLING_VOICE_MODE=fixed`. |
 | `STARLING_VOICE_POOL` | the 22 built-in `en-US-Chirp3-HD-*` voices | Comma-separated pool for `random` mode. |
+| `STARLING_CAPTURE_CONFIRM` | off | `true` makes `capture` launch the reader with `--confirm`: it prints the `--dry-run` report and asks before synthesizing. |
 | `STARLING_UPDATE_CHECK` | enabled | Set to `false`, `0`, `no` or `off` to disable the weekly release check. |
 
 `GOOGLE_APPLICATION_CREDENTIALS` is read as a fallback when `STARLING_GOOGLE_CREDENTIALS` is unset, and Starling also *sets* it at runtime so the Google client library can find the key.

@@ -630,3 +630,65 @@ def test_spinner_never_starts_when_event_not_set() -> None:
     thread.start()
     thread.join(timeout=2)
     assert not thread.is_alive()
+
+
+# ---------------------------------------------------------------------------
+# confirm_synthesis
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param("y", id="lowercase_y"),
+        pytest.param("Y", id="uppercase_y"),
+    ],
+)
+def test_confirm_synthesis_accepts_y_any_case(answer: str) -> None:
+    """Test that confirm_synthesis returns True for exactly 'y' or 'Y'."""
+    assert reader.confirm_synthesis(prompt=lambda _: answer) is True
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param("", id="empty_string"),
+        pytest.param("n", id="lowercase_n"),
+        pytest.param("no", id="no"),
+        pytest.param("yes", id="yes_not_y"),
+        pytest.param(" y", id="y_with_leading_space"),
+        pytest.param("y ", id="y_with_trailing_space"),
+    ],
+)
+def test_confirm_synthesis_rejects_empty_and_other(answer: str) -> None:
+    """Test that confirm_synthesis returns False for anything other than exact 'y' or 'Y'."""
+    assert reader.confirm_synthesis(prompt=lambda _: answer) is False
+
+
+def test_confirm_synthesis_prompt_text_is_stable() -> None:
+    """Test that the prompt text sent to the user matches the documented wording exactly."""
+    captured: list[str] = []
+
+    def _capture(message: str) -> str:
+        captured.append(message)
+        return "y"
+
+    reader.confirm_synthesis(prompt=_capture)
+
+    assert captured == ["Proceed with synthesis? (y/n): "]
+
+
+def test_confirm_synthesis_propagates_prompt_exception() -> None:
+    """
+    Test that an exception from the prompt callable (e.g. EOFError from closed stdin) propagates.
+
+    confirm_synthesis does not wrap the prompt call in a try/except, so a prompt source
+    that cannot read (a closed stdin, piped-empty input under `-y`-less automation) must
+    raise straight through rather than being silently treated as a decline.
+    """
+
+    def _raise(_message: str) -> str:
+        raise EOFError
+
+    with pytest.raises(EOFError):
+        reader.confirm_synthesis(prompt=_raise)

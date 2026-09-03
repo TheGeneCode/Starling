@@ -23,6 +23,7 @@ EPILOG: Final = """\
 examples:
   starling                      synthesize every .txt in the input directory
   starling read --dry-run       report what would be billed, without calling Google
+  starling read --confirm       preview the cost, then ask before synthesizing
   starling read --yes           overwrite existing .wav files without prompting
   starling capture              open the clipboard-capture window
   starling voices en-GB         list the voices Google offers for a language
@@ -35,6 +36,7 @@ def _handle_read(args: argparse.Namespace) -> int:
         options=ReadOptions(
             assume_yes=args.assume_yes,
             dry_run=args.dry_run,
+            confirm=args.confirm,
             input_dir=args.input_dir,
         ),
     )
@@ -97,12 +99,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Overwrite an existing .wav without asking. Makes the tool scriptable.",
     )
-    read_parser.add_argument(
+    preview_group = read_parser.add_mutually_exclusive_group()
+    preview_group.add_argument(
         "--dry-run",
         action="store_true",
         help=(
             "Report what would be synthesized and how many characters it would bill. "
             "Makes no API calls and needs no Google credentials."
+        ),
+    )
+    preview_group.add_argument(
+        "--confirm",
+        action="store_true",
+        help=(
+            "Print the --dry-run report first, then ask before synthesizing for real. "
+            "Set STARLING_CAPTURE_CONFIRM=true to make `starling capture` use this."
         ),
     )
     read_parser.set_defaults(handler=_handle_read)

@@ -57,6 +57,7 @@ class ReadOptions:
 
     assume_yes: bool = False
     dry_run: bool = False
+    confirm: bool = False
     input_dir: Path | None = None
 
 
@@ -272,6 +273,17 @@ def confirm_overwrite(
     answer = prompt(
         f"The file {output_path} already exists. Do you want to overwrite it? (y/n): ",
     )
+    return answer.lower() == "y"
+
+
+def confirm_synthesis(*, prompt: Callable[[str], str] = input) -> bool:
+    """
+    Ask whether to proceed from the dry-run preview to the real, billed run.
+
+    Mirrors confirm_overwrite's acceptance rule exactly: only "y" (any case)
+    proceeds, so an empty line, Ctrl-D's empty string, or anything else is a no.
+    """
+    answer = prompt("Proceed with synthesis? (y/n): ")
     return answer.lower() == "y"
 
 
@@ -590,6 +602,21 @@ def run_read(
             assume_yes=options.assume_yes,
         )
         return 0
+
+    if options.confirm:
+        print_dry_run(
+            plan_dry_run(input_paths, config),
+            config,
+            assume_yes=options.assume_yes,
+        )
+        print()
+        if not confirm_synthesis():
+            print(
+                "Cancelled. Nothing was synthesized; "
+                "your files are still in the input directory.",
+            )
+            return 0
+        print()
 
     try:
         require_credentials(config)

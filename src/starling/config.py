@@ -47,6 +47,11 @@ DEFAULT_VOICE_POOL: Final[tuple[str, ...]] = (
     "en-US-Chirp3-HD-Zephyr",
 )
 
+# The values that switch a STARLING_* boolean off, matching update_check.py's
+# _DISABLED_VALUES so one .env convention covers every flag Starling reads.
+FALSEY_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
+TRUTHY_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
+
 
 class ConfigError(RuntimeError):
     """Raised when Starling's configuration is missing, malformed, or unusable."""
@@ -70,6 +75,7 @@ class StarlingConfig:
     voice_pool: tuple[str, ...]
     usage_log_path: Path
     error_log_path: Path
+    capture_confirm: bool
 
 
 def _env(name: str) -> str | None:
@@ -101,6 +107,29 @@ def _env_voice_mode(default: VoiceMode) -> VoiceMode:
         if mode.value == normalized:
             return mode
     msg = f"STARLING_VOICE_MODE={raw!r} is not valid. Use one of: fixed, random."
+    raise ConfigError(msg)
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    """
+    Return a boolean STARLING_* flag. Blank or unset yields ``default``.
+
+    Accepts the same spellings as STARLING_UPDATE_CHECK (1/true/yes/on and
+    0/false/no/off, case-insensitive). An unrecognized value is a ConfigError
+    rather than a silent fallback -- a typo in a flag that gates billing must
+    not read as "off".
+    """
+    raw = (_env(name) or "").strip().casefold()
+    if not raw:
+        return default
+    if raw in TRUTHY_VALUES:
+        return True
+    if raw in FALSEY_VALUES:
+        return False
+    msg = (
+        f"{ENV_PREFIX}{name}={raw!r} is not valid. Use one of: "
+        "true, false, 1, 0, yes, no, on, off."
+    )
     raise ConfigError(msg)
 
 
@@ -181,6 +210,8 @@ def load_config(*, use_dotenv: bool = True) -> StarlingConfig:
             )
             raise ConfigError(msg)
 
+    capture_confirm = _env_flag("CAPTURE_CONFIRM", default=False)
+
     return StarlingConfig(
         home_dir=home_dir,
         input_dir=input_dir,
@@ -193,6 +224,7 @@ def load_config(*, use_dotenv: bool = True) -> StarlingConfig:
         voice_pool=voice_pool,
         usage_log_path=usage_log_path,
         error_log_path=error_log_path,
+        capture_confirm=capture_confirm,
     )
 
 

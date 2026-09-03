@@ -51,6 +51,7 @@ def test_apply_default_command_empty_argv() -> None:
         pytest.param(["--dry-run"], id="dry_run"),
         pytest.param(["-y"], id="short_yes"),
         pytest.param(["--input-dir", "x"], id="input_dir"),
+        pytest.param(["--confirm"], id="confirm"),
     ],
 )
 def test_apply_default_command_prepends_read_for_bare_flags(argv: list[str]) -> None:
@@ -194,6 +195,25 @@ def test_parser_version_flag_is_root_only_not_inherited_by_subparsers(
     assert exc_info.value.code == 2
 
 
+def test_parser_confirm_flag() -> None:
+    """Test that --confirm flag sets confirm=True in ReadOptions."""
+    args = build_parser().parse_args(["read", "--confirm"])
+    assert args.confirm is True
+
+
+def test_parser_confirm_and_dry_run_are_mutually_exclusive() -> None:
+    """Test that --confirm and --dry-run cannot both be specified."""
+    with pytest.raises(SystemExit) as exc_info:
+        build_parser().parse_args(["read", "--dry-run", "--confirm"])
+    assert exc_info.value.code == 2
+
+
+def test_parser_read_confirm_defaults_false() -> None:
+    """Test that confirm defaults to False when not specified."""
+    args = build_parser().parse_args(["read"])
+    assert args.confirm is False
+
+
 # ---------------------------------------------------------------------------
 # main() dispatch
 # ---------------------------------------------------------------------------
@@ -236,6 +256,32 @@ def test_main_read_passes_options_through(
     assert recorder.calls[0][1] == {
         "options": ReadOptions(assume_yes=True, dry_run=True, input_dir=tmp_path),
     }
+
+
+def test_main_read_confirm_flag_sets_read_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that --confirm flag is passed to ReadOptions."""
+    recorder = _Recorder()
+    monkeypatch.setattr(starling.cli, "run_read", recorder)
+
+    main(["read", "--confirm"])
+
+    assert recorder.calls[0][1] == {
+        "options": ReadOptions(confirm=True),
+    }
+
+
+def test_main_bare_confirm_flag_dispatches_same_as_read_confirm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that `starling --confirm` (implicit read) matches `starling read --confirm`."""
+    recorder = _Recorder()
+    monkeypatch.setattr(starling.cli, "run_read", recorder)
+
+    main(["--confirm"])
+
+    assert recorder.calls[0][1] == {"options": ReadOptions(confirm=True)}
 
 
 def test_main_capture_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:

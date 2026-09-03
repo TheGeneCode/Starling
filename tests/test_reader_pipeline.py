@@ -44,6 +44,7 @@ def tmp_config(tmp_path: Path, fake_credentials: Path) -> StarlingConfig:
         voice_pool=("en-US-Chirp3-HD-Aoede", "en-US-Chirp3-HD-Puck"),
         usage_log_path=tmp_path / "logs" / "usage.log",
         error_log_path=tmp_path / "logs" / "errors.log",
+        capture_confirm=False,
     )
     ensure_directories(config)
     return config
@@ -1078,6 +1079,162 @@ def test_run_read_ignores_non_txt_files(
     assert result == 0
     assert "a.txt" in out
     assert "notes.md" not in out
+
+
+# ---------------------------------------------------------------------------
+# confirm flow in run_read
+# ---------------------------------------------------------------------------
+
+
+def test_run_read_confirm_yes_proceeds_to_credentials(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that confirm=True with a yes answer calls require_credentials."""
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+    monkeypatch.setattr(reader, "confirm_synthesis", lambda **_kw: True)
+
+    def raising_require_credentials(_config: StarlingConfig) -> None:
+        raise reader.ConfigError("credentials check")
+
+    monkeypatch.setattr(reader, "require_credentials", raising_require_credentials)
+
+    result = reader.run_read(
+        config=tmp_config, options=reader.ReadOptions(confirm=True)
+    )
+
+    assert result == 1
+
+
+def test_run_read_confirm_no_returns_zero_without_credentials(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that confirm=True with a no answer returns 0 and never calls require_credentials."""
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+    monkeypatch.setattr(reader, "confirm_synthesis", lambda **_kw: False)
+
+    def raising_require_credentials(_config: StarlingConfig) -> None:
+        raise AssertionError("require_credentials should not be called")
+
+    monkeypatch.setattr(reader, "require_credentials", raising_require_credentials)
+
+    result = reader.run_read(
+        config=tmp_config, options=reader.ReadOptions(confirm=True)
+    )
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "Cancelled" in out
+    assert filepath.exists()
+    assert list(tmp_config.archive_dir.iterdir()) == []
+
+
+def test_run_read_confirm_prints_dry_run_report(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that confirm=True prints the dry-run report before prompting."""
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("x" * 100, encoding="utf-8")
+    monkeypatch.setattr(reader, "confirm_synthesis", lambda **_kw: False)
+
+    result = reader.run_read(
+        config=tmp_config, options=reader.ReadOptions(confirm=True)
+    )
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "article.txt" in out
+    assert "100" in out
+
+
+def test_run_read_confirm_no_never_constructs_client(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Test the full cancel invariant: no credentials check, no TTS client, no filesystem touch.
+
+    test_run_read_confirm_no_returns_zero_without_credentials already pins that
+    require_credentials is never called and the input file survives. This test adds the
+    other half the Phase-confirm handoff calls load-bearing: cancelling must never
+    construct a real texttospeech.TextToSpeechClient either.
+    """
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+    monkeypatch.setattr(reader, "confirm_synthesis", lambda **_kw: False)
+
+    def _raise() -> None:
+        raise AssertionError("TextToSpeechClient should not be constructed")
+
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise)
+
+    result = reader.run_read(
+        config=tmp_config, options=reader.ReadOptions(confirm=True)
+    )
+
+    assert result == 0
+
+
+def test_run_read_dry_run_and_confirm_both_true_dry_run_wins(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Test the direct-caller combination the argparse mutual-exclusion group cannot prevent.
+
+    ReadOptions/run_read are constructible directly (not just through cli.py's argparse
+    group), so a caller can build ReadOptions(dry_run=True, confirm=True). run_read checks
+    `options.dry_run` (line 598) before `options.confirm` (line 606), so the dry-run early
+    return fires first: the dry-run report prints once, confirm_synthesis is never invoked,
+    and no credentials/client machinery runs. This pins that documented ordering.
+    """
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+
+    def _raise(**_kw: object) -> bool:
+        raise AssertionError("confirm_synthesis should not be called when dry_run wins")
+
+    monkeypatch.setattr(reader, "confirm_synthesis", _raise)
+
+    def _raise_client() -> None:
+        raise AssertionError("TextToSpeechClient should not be constructed")
+
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise_client)
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(dry_run=True, confirm=True),
+    )
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "article.txt" in out
+    assert "no Google API calls" in out
+    assert out.count("Dry run") == 1
+
+
+def test_run_read_no_input_files_never_prompts(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that confirm=True with empty input_dir returns 0 without calling confirm_synthesis."""
+    monkeypatch.setattr(reader, "confirm_synthesis", MagicMock(side_effect=AssertionError("should not be called")))
+
+    result = reader.run_read(
+        config=tmp_config, options=reader.ReadOptions(confirm=True)
+    )
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "No text files found" in out
 
 
 # ---------------------------------------------------------------------------

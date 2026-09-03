@@ -99,6 +99,7 @@ def tmp_config(tmp_path: Path) -> StarlingConfig:
         voice_pool=("en-US-Chirp3-HD-Aoede",),
         usage_log_path=tmp_path / "logs" / "usage.log",
         error_log_path=tmp_path / "logs" / "errors.log",
+        capture_confirm=False,
     )
     ensure_directories(config)
     return config
