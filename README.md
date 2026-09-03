@@ -21,6 +21,7 @@ Read saved articles aloud. Starling turns `.txt` articles into narrated `.wav` f
 - [Installation](#installation)
 - [Set Up Google Cloud Credentials](#set-up-google-cloud-credentials)
 - [What It Costs](#what-it-costs)
+- [Staying on the Free Tier](#staying-on-the-free-tier)
 - [Choosing a Voice](#choosing-a-voice)
 - [How to Use](#how-to-use)
 - [Command Reference](#command-reference)
@@ -191,7 +192,155 @@ Google lists Standard and WaveNet under one SKU, and Neural2 and Polyglot under 
 
 > **The percentage Starling prints is measured against 1,000,000 characters.** That is exactly the Chirp 3: HD, Neural2, Studio and Polyglot allowance, so it is accurate for the default configuration — but if you switch to Standard or WaveNet, whose allowance is 4,000,000, it overstates how much of your free tier you have used.
 >
-> **Starling's log is a record, not a limit.** It cannot stop a charge. The only hard stop is on Google's side: set a [Cloud Billing budget alert](https://cloud.google.com/billing/docs/how-to/budgets) on the project, and if you want a true ceiling, cap the Text-to-Speech API's requests-per-minute quota in **APIs & Services → Cloud Text-to-Speech API → Quotas & System Limits**.
+> **Starling's log is a record, not a limit.** It cannot stop a charge — the only controls
+> that can are on Google's side. See [Staying on the Free
+> Tier](#staying-on-the-free-tier) for the budget alert, the quota cap, and the off-switch,
+> with the steps for each.
+
+---
+
+## Staying on the Free Tier
+
+Most people who run Starling never pay Google anything. The free allowance is monthly and it
+is large: on the default Chirp 3: HD voices it covers roughly 165 typical articles a month,
+and on Standard or WaveNet voices roughly four times that — see
+[What It Costs](#what-it-costs) for the figures. Enabling billing is a verification step, not
+a subscription; Google charges nothing until a month's free allowance is used up. Starling
+itself never sees or handles a payment.
+
+The risk worth protecting against is not a surprise subscription. It is a single oversized
+batch — a folder you forgot was full, a re-run of an archive — quietly spending past the
+allowance. Everything below is about making that impossible to do by accident, and impossible
+to do without hearing about it.
+
+### What each protection actually buys you
+
+| Protection | Does it stop spending? | Setup |
+|---|---|---|
+| A project used by nothing but Starling | No — but it keeps every control below scoped to Starling alone | 2 min, once |
+| `starling read --dry-run` before a batch | Prevents the mistake before an API call exists | 5 sec, every batch |
+| A Cloud Billing budget alert | **No.** Email only — Google is explicit that a budget does not cap usage | 3 min, once |
+| A quota cap on the Text-to-Speech API | Partly — it caps the *rate*, so a runaway batch crawls instead of sprinting | 3 min, once |
+| Disabling the Text-to-Speech API between batches | **Yes.** Nothing can be synthesized on the project at all | 30 sec, each way |
+| Choosing a Standard or WaveNet voice | No — but it quadruples the free allowance and cuts the overage rate | 1 min, once |
+
+Do the first three. Add the fourth if you want a ceiling; add the fifth if you want a true
+off-switch between batches.
+
+### 1. Give Starling its own project
+
+Everything below is set *per project*. If Starling shares a project with anything else, a
+quota cap or a disabled API takes that other thing down with it, and a budget alert reports
+their combined spend. The setup in [Set Up Google Cloud
+Credentials](#set-up-google-cloud-credentials) already creates a fresh project — keep it that
+way, and keep the Text-to-Speech API the only API enabled on it. The service account still
+gets no IAM roles, for the same reason.
+
+### 2. Preview every batch with `--dry-run`
+
+`starling read --dry-run` reports each file's character count, the month's running total, and
+what the month would total afterwards. It makes no API calls and needs no credentials, so it
+cannot cost anything — and it is the only control here that catches the mistake *before* it
+happens. See [Keeping Track](#keeping-track).
+
+### 3. Set a budget alert so you hear about it fast
+
+A budget does not cap anything. Google says so plainly: an alerts-only budget "doesn't
+automatically cap Google Cloud or Google Maps Platform usage or spending". What it buys you is
+speed — you find out in hours instead of at the end of the month.
+
+1. In the Cloud Console, go to **Billing → Budgets & alerts**.
+2. Click **CREATE BUDGET**.
+3. Name it (e.g. `starling`), and under **Scope** set **Projects** to your Starling project
+   only. Optionally narrow **Services** to *Cloud Text-to-Speech API*.
+4. Set the **Target amount** to a small absolute figure — US$1 is a good choice, because at
+   these prices US$1 of overage is already far more than a normal month.
+5. Under **Actions**, keep the percent-of-budget threshold rules and add ones you will notice:
+   50% and 100% of **actual** spend, plus 100% of **forecasted** spend, which fires while the
+   month is still running.
+6. Leave **Email alerts to billing admins and users** checked, and confirm the address that
+   receives them is one you read.
+
+Alerts go to Billing Account Administrators and Billing Account Users on the billing account,
+and — for a single-project budget — optionally to Project Owners. Full options:
+[Cloud Billing budget alerts](https://cloud.google.com/billing/docs/how-to/budgets).
+
+### 4. Cap the API quota to put a ceiling on the rate
+
+Google does not offer a characters-per-month quota for Text-to-Speech, so this is not a
+monthly cap. What you can lower is **requests per minute**, and because a request carries at
+most 5,000 bytes, a low request rate does put a hard ceiling on how fast a runaway batch can
+spend.
+
+1. Go to **IAM & Admin → Quotas & System Limits**.
+2. Filter on **Service: Cloud Text-to-Speech API**.
+3. Select the quota that matches the voices you use, and click **EDIT**:
+   - `Chirp3RequestsPerMinutePerProject` — default 200 — Starling's default voices
+   - `Neural2RequestsPerMinutePerProject` — default 1,000
+   - `StudioRequestsPerMinutePerProject` — default 500
+   - `RequestsPerMinutePerProject` — default 1,000 — everything else, Standard and WaveNet included
+4. Enter a low new value. Starling sends one request per chunk, and an article of a few
+   thousand characters is a handful of chunks, so something like **5 requests per minute** is
+   ample for personal batches — it just makes a large batch take longer.
+5. Save, then reload the page and confirm the new value is the one now shown. Google reviews
+   quota adjustment requests and does not promise they apply instantly, so treat a cap as in
+   force only once the console shows it.
+
+Reference: [Text-to-Speech quotas and limits](https://cloud.google.com/text-to-speech/quotas).
+
+### 5. Turn the API off between batches
+
+This is the only setting here that makes spending genuinely impossible, and it takes seconds.
+
+- **Off:** **APIs & Services → Enabled APIs & services → Cloud Text-to-Speech API →
+  DISABLE API**. With the API disabled, nothing on the project can synthesize anything —
+  not a runaway batch, and not a key that leaked.
+- **On:** the same page, **ENABLE**, just before a batch.
+
+While it is off, `starling read` and `starling voices` both fail with a `403` naming the
+disabled API. `starling read --dry-run` and `starling usage` still work, because neither calls
+the API.
+
+### 6. Pick a voice family with more headroom
+
+Standard and WaveNet voices carry a much larger free allowance than the Chirp 3: HD default
+and are far cheaper past it — the exact figures are in the table under
+[What It Costs](#what-it-costs). If you read enough that the default allowance is a real
+constraint, switching family is the single biggest change you can make:
+
+```
+STARLING_VOICE_MODE=fixed
+STARLING_VOICE_NAME=en-US-Standard-C
+```
+
+Run `starling voices` to see what your language offers, and read
+[Choosing a Voice](#choosing-a-voice) for what each family sounds like.
+
+> **Starling's percentage assumes a 1,000,000-character allowance.** If you switch to a family
+> with a larger one, the percentage Starling prints overstates how much of it you have used.
+
+### If you want an automatic shut-off (advanced)
+
+Google documents a way to make a budget actually stop spending: the budget publishes to a
+Pub/Sub topic, and a Cloud Run function calls the Cloud Billing API to unlink the billing
+account from the project. Google attaches serious warnings to it — resources "might be
+irretrievably deleted", there is a delay between incurring cost and the notification arriving
+so you can still overshoot, and re-enabling billing is manual with "no guarantee of service
+recovery". It also requires Billing Account Administrator rights.
+
+For Starling alone this is more machinery than the problem deserves; disabling the
+Text-to-Speech API between batches gets you a harder stop with none of the risk. If you want
+it anyway: [Disable billing with
+notifications](https://cloud.google.com/billing/docs/how-to/disable-billing-with-notifications).
+
+### If a charge does appear
+
+1. Disable the Text-to-Speech API (step 5) — that stops anything further immediately.
+2. Run `starling usage` and open `<STARLING_HOME>/logs/usage.log`. Every synthesized file is
+   there with its character count, so you can see exactly which batch did it.
+3. Check **Billing → Reports**, filtered to the project, for what Google actually billed.
+4. The free allowance is monthly, so the meter starts again next month. Before your next
+   batch, set the budget alert and the quota cap if you have not.
 
 ---
 
@@ -367,7 +516,7 @@ To turn the check off: `STARLING_UPDATE_CHECK=false` in `.env` or the environmen
 | `Starling's capture UI needs a graphical display` | Running headless or over SSH without a display. |
 | `starling` not found after installing | uv's tool directory is not on `PATH`. Run `uv tool update-shell`, then open a new shell. |
 | An unexpected error, with a pointer to the error log | Full traceback is in `<STARLING_HOME>/logs/errors.log`. Include it in a bug report. |
-| A surprise Google Cloud bill | See [What It Costs](#what-it-costs) — use `--dry-run` and set a Cloud Billing budget alert. |
+| A surprise Google Cloud bill | See [Staying on the Free Tier](#staying-on-the-free-tier) — disable the API, then check `starling usage` and the usage log for the batch that did it. |
 
 ---
 

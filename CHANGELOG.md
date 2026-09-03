@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- README section **Staying on the Free Tier** — what each Google Cloud protection actually
+  buys you, with console steps for a budget alert, a Text-to-Speech quota cap, and disabling
+  the API between batches, plus what to do if a charge appears.
+
 ### Changed
 
 - Number-to-words conversion (`1,234` → `one thousand two hundred and thirty-four`,

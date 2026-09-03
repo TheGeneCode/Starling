@@ -63,6 +63,46 @@ def _changelog_text() -> str:
     return (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
+_FREE_TIER_HEADING: Final = "## Staying on the Free Tier"
+
+
+def _readme_text() -> str:
+    return (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def _github_anchor(heading_text: str) -> str:
+    """Slugify a markdown heading the way GitHub does for its auto-generated anchors."""
+    slug = heading_text.strip().lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    return re.sub(r"\s+", "-", slug)
+
+
+# ``## `` / ``### `` / ``#### `` at column 0 only -- deliberately excludes ``# `` (h1, the
+# document title, never gets a TOC entry) and ``##### ``/``###### `` (h5/h6, never used in this
+# README), and excludes a heading nested inside a blockquote (e.g. ``> ### like this``) since
+# that line does not start with ``#``. GitHub's autolink-header extension does anchor
+# blockquoted headings too, so this is a known, deliberate scope limit, not a fixed gap.
+_HEADING_PATTERN: Final = re.compile(r"^#{2,4} (.+)$", re.MULTILINE)
+
+# A TOC entry, optionally indented (a nested/sub-bullet TOC entry is still a TOC entry), whose
+# link target is an in-page anchor (``(#...)``). A bullet linking to a full URL
+# (``- [text](https://...)``) deliberately does not match: it has no ``#`` immediately after
+# the opening paren.
+_TOC_LINK_PATTERN: Final = re.compile(r"^\s*- \[.+?\]\(#(.+?)\)$", re.MULTILINE)
+
+
+def _readme_headings(text: str) -> list[str]:
+    return _HEADING_PATTERN.findall(text)
+
+
+def _readme_heading_anchors(text: str) -> dict[str, list[str]]:
+    """Map each GitHub anchor to the (possibly several) heading texts that slugify to it."""
+    anchors: dict[str, list[str]] = {}
+    for heading in _readme_headings(text):
+        anchors.setdefault(_github_anchor(heading), []).append(heading)
+    return anchors
+
+
 def test_changelog_has_no_duplicate_version_headings() -> None:
     headings = re.findall(r"^## \[(.+?)\]", _changelog_text(), flags=re.MULTILINE)
     assert len(headings) == len(set(headings)), f"duplicate changelog headings: {headings}"
@@ -84,6 +124,156 @@ def test_changelog_has_a_section_for_the_packaged_version() -> None:
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = pyproject["project"]["version"]
     assert f"## [{version}]" in _changelog_text()
+
+
+def test_readme_documents_staying_on_the_free_tier() -> None:
+    text = _readme_text()
+    assert text.count(_FREE_TIER_HEADING) == 1
+    assert "(#staying-on-the-free-tier)" in text
+
+
+def test_every_readme_toc_link_resolves_to_a_heading() -> None:
+    text = _readme_text()
+    toc_anchors = _TOC_LINK_PATTERN.findall(text)
+    assert toc_anchors, "expected at least one TOC link in README.md"
+
+    heading_anchors = set(_readme_heading_anchors(text))
+    unresolved = [anchor for anchor in toc_anchors if anchor not in heading_anchors]
+    assert not unresolved, f"TOC anchors with no matching heading: {unresolved}"
+
+
+def test_readme_headings_have_unique_anchors() -> None:
+    collisions = {
+        anchor: names
+        for anchor, names in _readme_heading_anchors(_readme_text()).items()
+        if len(names) > 1
+    }
+    assert not collisions, f"headings collide on the same anchor: {collisions}"
+
+
+def test_every_readme_top_level_heading_has_a_toc_entry() -> None:
+    """
+    Reverse direction from ``test_every_readme_toc_link_resolves_to_a_heading``.
+
+    That test catches a stale/typo'd TOC link. It does not catch the opposite mistake: a new
+    ``##`` section added without ever adding it to the Table of Contents, which would silently
+    ship an undiscoverable section rather than fail any check.
+    """
+    text = _readme_text()
+    toc_anchors = set(_TOC_LINK_PATTERN.findall(text))
+    top_level_headings = re.findall(r"^## (.+)$", text, flags=re.MULTILINE)
+    orphaned = [
+        heading
+        for heading in top_level_headings
+        if heading != "Table of Contents" and _github_anchor(heading) not in toc_anchors
+    ]
+    assert not orphaned, f"top-level headings missing a TOC entry: {orphaned}"
+
+
+def test_github_anchor_pins_the_real_code_span_heading() -> None:
+    """
+    Pin risk area 1 (an inline code span in a heading) against the real README.
+
+    Uses the one heading that actually has this shape:
+    ``### 2. Preview every batch with `--dry-run` ``. The backticks are stripped like any other
+    punctuation, and the surrounding space collapses to a hyphen adjacent to the two literal
+    hyphens already in ``--dry-run``, producing a run of three hyphens -- not a bug, just the
+    documented, non-collapsing behavior of the second ``re.sub`` call.
+    """
+    text = _readme_text()
+    headings = _readme_headings(text)
+    matches = [h for h in headings if "--dry-run" in h]
+    assert len(matches) == 1, f"expected exactly one heading mentioning --dry-run, got {matches}"
+    anchor = _github_anchor(matches[0])
+    assert anchor == "2-preview-every-batch-with---dry-run"
+    assert anchor in _readme_heading_anchors(text)
+
+
+@pytest.mark.parametrize(
+    ("heading_text", "expected_anchor"),
+    [
+        pytest.param("Preview `--dry-run`", "preview---dry-run", id="inline_code_span"),
+        pytest.param("Starling's Voice", "starlings-voice", id="apostrophe"),
+        pytest.param("APIs & Services", "apis-services", id="ampersand"),
+        pytest.param("Step 2: Enable Billing", "step-2-enable-billing", id="numbers_and_colon"),
+        pytest.param("Café Résumé", "café-résumé", id="unicode_accented"),
+        pytest.param("", "", id="empty_string"),
+        pytest.param("   ", "", id="whitespace_only"),
+        pytest.param("Choosing   a   Voice", "choosing-a-voice", id="multiple_consecutive_spaces"),
+        pytest.param("Wrap-up!", "wrap-up", id="trailing_punctuation"),
+        pytest.param("ALL CAPS Heading", "all-caps-heading", id="mixed_case_is_lowered"),
+        pytest.param("Already-Hyphenated", "already-hyphenated", id="existing_hyphen_preserved"),
+    ],
+)
+def test_github_anchor_examples(heading_text: str, expected_anchor: str) -> None:
+    assert _github_anchor(heading_text) == expected_anchor
+
+
+def test_github_anchor_empty_and_whitespace_only_headings_collide() -> None:
+    """
+    Document risk area 5: a fully empty heading and a whitespace-only one collide.
+
+    Both slugify to ``""``. Neither shape exists in the real README today (a bare ``## `` with
+    nothing after it does not even satisfy the heading regex's required ``(.+)``, so it is
+    never captured at all), but a whitespace-only heading such as ``##  `` (two spaces) *does*
+    satisfy ``(.+)`` and would collide with any other degenerate heading. Isolated so the edge
+    case has coverage independent of what the README currently contains.
+    """
+    assert _github_anchor("") == _github_anchor("   ") == ""
+
+
+def test_readme_heading_anchors_detects_a_manufactured_collision() -> None:
+    """
+    Positive control for ``test_readme_headings_have_unique_anchors``.
+
+    The real README has no colliding headings today, which means that test could be green
+    either because the detection logic works or because it never runs against a colliding
+    case. Feed ``_readme_heading_anchors`` synthetic text with two headings that differ only in
+    case and trailing punctuation -- both slugify to ``setup`` -- and confirm the collision is
+    actually reported.
+    """
+    text = "## Setup\n\nsome text\n\n### setup!\n\nmore text\n"
+    anchors = _readme_heading_anchors(text)
+    assert anchors["setup"] == ["Setup", "setup!"]
+
+
+def test_toc_link_pattern_allows_indentation_but_not_external_links() -> None:
+    """
+    Risk area 2: the TOC-link regex must accept indentation but not an external link.
+
+    It must resolve a nested/indented TOC entry (a sub-bullet under a top-level TOC item) the
+    same as a flat one, and must not pick up an unrelated bullet that links to a full URL
+    rather than an in-page anchor. The real README currently has neither shape (confirmed: no
+    indented ``- [`` bullet and no other ``- [text](url)`` bullet exists outside the flat TOC),
+    so this is exercised in isolation rather than depending on the README happening to contain
+    one.
+    """
+    text = (
+        "- [Top Entry](#top-entry)\n"
+        "  - [Nested Entry](#nested-entry)\n"
+        "- [External Link](https://example.com)\n"
+        "- Plain bullet, no link at all\n"
+    )
+    assert _TOC_LINK_PATTERN.findall(text) == ["top-entry", "nested-entry"]
+
+
+def test_heading_pattern_excludes_h1_h5_and_blockquoted_headings() -> None:
+    """
+    Document the deliberate scope of ``_HEADING_PATTERN``.
+
+    An h1 (the document title, which never gets a TOC entry), an h5, and a heading nested
+    inside a blockquote (``> ### ...``, which the real README actually has at the
+    JSON-key-is-a-credential callout) are all outside what this check considers. The
+    blockquoted case is a known, un-fixed limitation -- GitHub's real anchor generation does
+    cover blockquoted headings -- called out here rather than silently assumed.
+    """
+    text = (
+        "# Document Title\n"
+        "## Included Section\n"
+        "##### Also Excluded\n"
+        "> ### Blockquoted Heading\n"
+    )
+    assert _readme_headings(text) == ["Included Section"]
 
 
 def test_tracked_docs_contain_no_real_home_directory() -> None:
