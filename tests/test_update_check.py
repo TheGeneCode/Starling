@@ -22,6 +22,7 @@ def _response(status_code: int = 200, json_body: Any = None) -> Mock:
     response.json.return_value = json_body
     return response
 
+
 # ---------------------------------------------------------------------------
 # normalize_version
 # ---------------------------------------------------------------------------
@@ -37,7 +38,9 @@ class TestNormalizeVersion:
         ],
     )
     def test_normalize_version_parses_tags(
-        self, version: str, expected: tuple[int, ...],
+        self,
+        version: str,
+        expected: tuple[int, ...],
     ) -> None:
         assert uc.normalize_version(version) == expected
 
@@ -101,7 +104,9 @@ class TestIsUpdateAvailable:
 
 class TestStateDir:
     def test_state_dir_windows_uses_localappdata(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         monkeypatch.setattr(uc.sys, "platform", "win32")
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
@@ -112,7 +117,9 @@ class TestStateDir:
         assert tmp_path in result.parents
 
     def test_state_dir_darwin_uses_application_support(
-        self, monkeypatch: pytest.MonkeyPatch, fake_home: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_home: Path,
     ) -> None:
         monkeypatch.setattr(uc.sys, "platform", "darwin")
 
@@ -121,7 +128,9 @@ class TestStateDir:
         assert result == fake_home / "Library" / "Application Support" / "starling"
 
     def test_state_dir_linux_prefers_xdg_state_home(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         monkeypatch.setattr(uc.sys, "platform", "linux")
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
@@ -131,7 +140,9 @@ class TestStateDir:
         assert result == tmp_path / "starling"
 
     def test_state_dir_linux_falls_back_to_local_state(
-        self, monkeypatch: pytest.MonkeyPatch, fake_home: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_home: Path,
     ) -> None:
         monkeypatch.setattr(uc.sys, "platform", "linux")
         monkeypatch.delenv("XDG_STATE_HOME", raising=False)
@@ -171,7 +182,8 @@ class TestStateFile:
     def test_read_state_drops_non_string_values(self, state_file: Path) -> None:
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(
-            '{"last_checked": "2026-01-01", "n": 3}', encoding="utf-8",
+            '{"last_checked": "2026-01-01", "n": 3}',
+            encoding="utf-8",
         )
 
         assert uc.read_state(state_file) == {"last_checked": "2026-01-01"}
@@ -185,7 +197,9 @@ class TestStateFile:
         assert uc.read_state(state_file) == {"last_checked": "2026-01-01"}
 
     def test_write_state_unwritable_is_silent(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         def _raise(*_args: object, **_kwargs: object) -> None:
             raise PermissionError
@@ -259,7 +273,8 @@ class TestIsStale:
 
 class TestGetLatestRelease:
     def test_get_latest_release_returns_first_entry(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         body = [{"tag_name": "v0.2.0"}, {"tag_name": "v0.1.0"}]
         monkeypatch.setattr(requests, "get", Mock(return_value=_response(json_body=body)))
@@ -285,22 +300,28 @@ class TestGetLatestRelease:
 
     def test_get_latest_release_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            requests, "get", Mock(side_effect=requests.exceptions.Timeout),
+            requests,
+            "get",
+            Mock(side_effect=requests.exceptions.Timeout),
         )
 
         assert uc.get_latest_release() is None
 
     def test_get_latest_release_connection_error(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(
-            requests, "get", Mock(side_effect=requests.exceptions.ConnectionError),
+            requests,
+            "get",
+            Mock(side_effect=requests.exceptions.ConnectionError),
         )
 
         assert uc.get_latest_release() is None
 
     def test_get_latest_release_malformed_json(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         response = _response()
         response.json.side_effect = ValueError
@@ -309,7 +330,8 @@ class TestGetLatestRelease:
         assert uc.get_latest_release() is None
 
     def test_get_latest_release_non_list_payload(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         body = {"message": "Not Found"}
         monkeypatch.setattr(requests, "get", Mock(return_value=_response(json_body=body)))
@@ -333,7 +355,8 @@ class TestGetLatestRelease:
 
 class TestLatestReleaseTag:
     def test_latest_release_tag_missing_tag_name(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         body = [{"name": "0.2.0"}]
         monkeypatch.setattr(requests, "get", Mock(return_value=_response(json_body=body)))
@@ -360,7 +383,9 @@ class TestLatestReleaseTag:
 
 class TestRefreshState:
     def test_refresh_state_caches_tag(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         uc.write_state(state_file, {"last_checked": "2000-01-01"})
         body = [{"tag_name": "v0.2.0"}]
@@ -371,7 +396,9 @@ class TestRefreshState:
         assert uc.read_state(state_file)["latest_version"] == "v0.2.0"
 
     def test_refresh_state_preserves_last_checked(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         uc.write_state(state_file, {"last_checked": "2000-01-01"})
         body = [{"tag_name": "v0.2.0"}]
@@ -384,12 +411,16 @@ class TestRefreshState:
         assert state["latest_version"] == "v0.2.0"
 
     def test_refresh_state_silent_on_failure(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         uc.write_state(state_file, {"last_checked": "2000-01-01"})
         before = state_file.read_bytes()
         monkeypatch.setattr(
-            requests, "get", Mock(side_effect=requests.exceptions.ConnectionError),
+            requests,
+            "get",
+            Mock(side_effect=requests.exceptions.ConnectionError),
         )
 
         uc.refresh_state(state_file)
@@ -497,7 +528,8 @@ class TestMaybeNotifyUpdate:
         monkeypatch.setattr(uc, "APP_VERSION", "0.1.0")
         today = datetime.now(tz=UTC).date().isoformat()
         uc.write_state(
-            state_file, {"latest_version": "v0.2.0", "last_checked": today},
+            state_file,
+            {"latest_version": "v0.2.0", "last_checked": today},
         )
         stream = io.StringIO()
 
@@ -518,7 +550,8 @@ class TestMaybeNotifyUpdate:
         monkeypatch.setattr(uc, "APP_VERSION", "0.1.0")
         today = datetime.now(tz=UTC).date().isoformat()
         uc.write_state(
-            state_file, {"latest_version": "v0.1.0", "last_checked": today},
+            state_file,
+            {"latest_version": "v0.1.0", "last_checked": today},
         )
         stream = io.StringIO()
 
@@ -536,7 +569,8 @@ class TestMaybeNotifyUpdate:
         monkeypatch.setattr(uc, "APP_VERSION", "0.2.0")
         today = datetime.now(tz=UTC).date().isoformat()
         uc.write_state(
-            state_file, {"latest_version": "v0.1.0", "last_checked": today},
+            state_file,
+            {"latest_version": "v0.1.0", "last_checked": today},
         )
         stream = io.StringIO()
 
@@ -624,7 +658,9 @@ class TestMaybeNotifyUpdate:
     ) -> None:
         monkeypatch.setattr(uc, "APP_VERSION", "0.1.0")
         monkeypatch.setattr(
-            uc, "write_state", Mock(side_effect=PermissionError),
+            uc,
+            "write_state",
+            Mock(side_effect=PermissionError),
         )
 
         assert uc.maybe_notify_update(stream=io.StringIO()) is None
@@ -660,7 +696,9 @@ class TestMaybeNotifyUpdate:
     ) -> None:
         monkeypatch.setattr(uc, "APP_VERSION", "0.1.0")
         monkeypatch.setattr(
-            requests, "get", Mock(side_effect=requests.exceptions.ConnectionError),
+            requests,
+            "get",
+            Mock(side_effect=requests.exceptions.ConnectionError),
         )
         stream = io.StringIO()
 
@@ -689,7 +727,9 @@ class TestMaybeNotifyUpdate:
 
 class TestStateDirEnvFallback:
     def test_state_dir_windows_localappdata_unset_falls_back(
-        self, monkeypatch: pytest.MonkeyPatch, fake_home: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_home: Path,
     ) -> None:
         """
         Exercise the Windows fallback the handoff says had zero coverage.
@@ -705,7 +745,9 @@ class TestStateDirEnvFallback:
         assert result == fake_home / "AppData" / "Local" / "starling"
 
     def test_state_dir_windows_localappdata_empty_falls_back(
-        self, monkeypatch: pytest.MonkeyPatch, fake_home: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_home: Path,
     ) -> None:
         """
         A set-but-empty LOCALAPPDATA is falsy too, and must still fall back.
@@ -720,7 +762,9 @@ class TestStateDirEnvFallback:
         assert result == fake_home / "AppData" / "Local" / "starling"
 
     def test_state_dir_linux_xdg_state_home_empty_falls_back(
-        self, monkeypatch: pytest.MonkeyPatch, fake_home: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_home: Path,
     ) -> None:
         monkeypatch.setattr(uc.sys, "platform", "linux")
         monkeypatch.setenv("XDG_STATE_HOME", "")
@@ -737,7 +781,9 @@ class TestStateDirEnvFallback:
 
 class TestStateFileAdditional:
     def test_read_state_permission_error(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         """
         PermissionError gets the same silent-empty-dict contract as a missing file.
@@ -756,7 +802,9 @@ class TestStateFileAdditional:
         assert uc.read_state(state_file) == {}
 
     def test_write_state_replace_failure_leaves_no_temp_file(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         """
         The cleanup branch must fire when os.replace itself fails, not just write_text.
@@ -777,7 +825,8 @@ class TestStateFileAdditional:
         assert list(state_file.parent.iterdir()) == []
 
     def test_write_state_concurrent_writers_same_process_can_lose_writes(
-        self, state_file: Path,
+        self,
+        state_file: Path,
     ) -> None:
         """
         CONFIRMED bug: same-process concurrency can silently lose writes.
@@ -809,9 +858,7 @@ class TestStateFileAdditional:
             except BaseException as exc:
                 errors.append(exc)
 
-        threads = [
-            threading.Thread(target=_writer, args=(i,), daemon=True) for i in range(20)
-        ]
+        threads = [threading.Thread(target=_writer, args=(i,), daemon=True) for i in range(20)]
         for t in threads:
             t.start()
         for t in threads:
@@ -826,7 +873,9 @@ class TestStateFileAdditional:
         assert state in [{}, *({"i": str(i)} for i in range(20))]
 
     def test_write_state_same_process_concurrent_writers_can_silently_lose_a_write(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         """
         Pins the gap the handoff flagged: same-process writers share a temp path.
@@ -898,7 +947,8 @@ class TestIsStaleAdditional:
 
 class TestGetLatestReleaseExceptionNarrowing:
     def test_get_latest_release_unnarrowed_exception_propagates(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
         Pins the boundary of the except clause named in the handoff's risk list.
@@ -922,7 +972,9 @@ class TestGetLatestReleaseExceptionNarrowing:
 
 class TestRefreshStateAdditional:
     def test_refresh_state_swallows_unexpected_exception_type(
-        self, monkeypatch: pytest.MonkeyPatch, state_file: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_file: Path,
     ) -> None:
         """
         refresh_state's own bare except is the backstop for the gap pinned above.
@@ -946,7 +998,9 @@ class TestRefreshStateAdditional:
 
 class TestUpdateCheckEnabledAdditional:
     def test_update_check_enabled_whitespace_padded_disable_value(
-        self, monkeypatch: pytest.MonkeyPatch, clean_env: None,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        clean_env: None,
     ) -> None:
         monkeypatch.setenv("STARLING_UPDATE_CHECK", "  FALSE  ")
 
@@ -975,7 +1029,8 @@ class TestMaybeNotifyUpdateAdditional:
         monkeypatch.setattr(uc, "APP_VERSION", "0.1.0")
         stale = (datetime.now(tz=UTC) - timedelta(days=8)).date().isoformat()
         uc.write_state(
-            state_file, {"latest_version": "v0.2.0", "last_checked": stale},
+            state_file,
+            {"latest_version": "v0.2.0", "last_checked": stale},
         )
         stream = io.StringIO()
 

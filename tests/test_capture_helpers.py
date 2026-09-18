@@ -27,12 +27,8 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        pytest.param(
-            "abc DEF 123-_.() ", "abc DEF 123-_.() ", id="already_valid_unchanged"
-        ),
-        pytest.param(
-            'a:b?c"d<e>f|g*h/i\\j', "abcdefghij", id="strips_windows_reserved_chars"
-        ),
+        pytest.param("abc DEF 123-_.() ", "abc DEF 123-_.() ", id="already_valid_unchanged"),
+        pytest.param('a:b?c"d<e>f|g*h/i\\j', "abcdefghij", id="strips_windows_reserved_chars"),
         pytest.param("", "", id="empty_string"),
         pytest.param(":::???", "", id="all_invalid_chars_returns_empty"),
         pytest.param("café_文件", "caf_", id="strips_unicode_accents_and_cjk"),
@@ -81,9 +77,7 @@ def test_shorten_text_max_length_three_is_ellipsis_only() -> None:
     assert len(result) == 3
 
 
-def test_shorten_text_max_length_below_three_produces_output_longer_than_max_length() -> (
-    None
-):
+def test_shorten_text_max_length_below_three_produces_output_longer_than_max_length() -> None:
     """
     Document a boundary defect: max_length < 3 makes the result LONGER than max_length.
 

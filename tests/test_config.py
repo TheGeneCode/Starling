@@ -18,9 +18,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def test_defaults_when_nothing_is_set(
-    clean_env: None, fake_home: Path
-) -> None:
+def test_defaults_when_nothing_is_set(clean_env: None, fake_home: Path) -> None:
     """Verify all defaults when no env vars or .env file are present."""
     cfg = config.load_config(use_dotenv=False)
 
@@ -110,9 +108,7 @@ def test_blank_value_falls_back_to_default(
 # ---------------------------------------------------------------------------
 
 
-def test_ensure_directories_creates_all_five(
-    clean_env: None, fake_home: Path
-) -> None:
+def test_ensure_directories_creates_all_five(clean_env: None, fake_home: Path) -> None:
     """Verify that ensure_directories creates all five required directories."""
     cfg = config.load_config(use_dotenv=False)
 
@@ -133,9 +129,7 @@ def test_ensure_directories_creates_all_five(
     assert cfg.error_log_path.parent.is_dir()
 
 
-def test_ensure_directories_is_idempotent(
-    clean_env: None, fake_home: Path
-) -> None:
+def test_ensure_directories_is_idempotent(clean_env: None, fake_home: Path) -> None:
     """Verify that calling ensure_directories twice does not raise."""
     cfg = config.load_config(use_dotenv=False)
 
@@ -270,9 +264,7 @@ def test_ensure_directories_stops_after_first_failure(
     cfg = config.load_config(use_dotenv=False)
     real_mkdir = PathClass.mkdir
 
-    def selective_failing_mkdir(
-        self: PathClass, *args: object, **kwargs: object
-    ) -> None:
+    def selective_failing_mkdir(self: PathClass, *args: object, **kwargs: object) -> None:
         if self == cfg.input_dir:
             raise PermissionError("denied")
         real_mkdir(self, *args, **kwargs)
@@ -414,9 +406,7 @@ def test_credentials_pointing_at_a_directory_raises(
 # ---------------------------------------------------------------------------
 
 
-def test_voice_mode_is_case_insensitive(
-    clean_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_voice_mode_is_case_insensitive(clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify that voice mode matching is case-insensitive."""
     monkeypatch.setenv("STARLING_VOICE_MODE", "  Fixed ")
 
@@ -456,9 +446,7 @@ def test_pool_strips_whitespace_and_dedupes_case_insensitively(
     assert cfg.voice_pool == ("en-US-Chirp3-HD-Aoede", "en-US-Chirp3-HD-Puck")
 
 
-def test_single_entry_pool(
-    clean_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_single_entry_pool(clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify that a single-entry pool is preserved as a one-element tuple."""
     monkeypatch.setenv("STARLING_VOICE_POOL", "en-US-Chirp3-HD-Puck")
 
@@ -467,9 +455,7 @@ def test_single_entry_pool(
     assert cfg.voice_pool == ("en-US-Chirp3-HD-Puck",)
 
 
-def test_pool_with_only_separators_raises(
-    clean_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pool_with_only_separators_raises(clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify that a pool containing only separators raises with a suggestion."""
     monkeypatch.setenv("STARLING_VOICE_POOL", ",,,")
 

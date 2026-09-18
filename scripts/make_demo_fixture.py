@@ -133,11 +133,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    root = (
-        args.root
-        if args.root is not None
-        else Path(tempfile.mkdtemp(prefix="starling-demo-"))
-    )
+    root = args.root if args.root is not None else Path(tempfile.mkdtemp(prefix="starling-demo-"))
     build_fixture(root)
     print(root)
 

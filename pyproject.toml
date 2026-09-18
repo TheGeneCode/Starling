@@ -94,6 +94,7 @@ source = ["src/starling"]
 
 [tool.ruff]
 src = ["src", "tests"]
+line-length = 100
 
 [tool.ruff.lint]
 select = ["ALL"]

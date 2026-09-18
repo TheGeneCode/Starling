@@ -162,10 +162,7 @@ def format_voices_table(voices: Sequence[VoiceInfo]) -> str:
     """Render the voice catalog as an aligned three-column table."""
     headers = ("VOICE", "GENDER", "FAMILY")
     rows = [(voice.name, voice.gender, voice.family) for voice in voices]
-    widths = [
-        max(len(cell) for cell in column)
-        for column in zip(headers, *rows, strict=True)
-    ]
+    widths = [max(len(cell) for cell in column) for column in zip(headers, *rows, strict=True)]
 
     def render(cells: Sequence[str]) -> str:
         return "  ".join(

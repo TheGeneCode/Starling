@@ -77,9 +77,7 @@ def test_confirm_overwrite_assume_yes_never_prompts(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("answer", ["y", "Y"])
-def test_confirm_overwrite_accepts_y_case_insensitively(
-    tmp_path: Path, answer: str
-) -> None:
+def test_confirm_overwrite_accepts_y_case_insensitively(tmp_path: Path, answer: str) -> None:
     """Test that a 'y' or 'Y' answer confirms the overwrite."""
     output_path = tmp_path / "existing.wav"
     output_path.write_bytes(b"")
@@ -146,9 +144,7 @@ def test_synthesize_text_one_request_per_chunk(
 ) -> None:
     """Test that synthesize_text issues one synthesize_speech call per text chunk."""
     monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: ["a", "b", "c"])
-    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
-        audio_content=b"\x00\x01"
-    )
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
 
     reader.synthesize_text(
         fake_tts_client,
@@ -164,9 +160,7 @@ def test_synthesize_text_returns_parseable_wav(
     monkeypatch: pytest.MonkeyPatch, fake_tts_client: MagicMock
 ) -> None:
     """Test that synthesize_text's output opens as a WAV with the right framerate/channels."""
-    monkeypatch.setattr(
-        reader, "split_text_into_chunks", lambda _text: ["chunk one", "chunk two"]
-    )
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: ["chunk one", "chunk two"])
     fake_tts_client.synthesize_speech.side_effect = [
         SimpleNamespace(audio_content=b"\x01\x00"),
         SimpleNamespace(audio_content=b"\x02\x00"),
@@ -187,9 +181,7 @@ def test_synthesize_text_returns_parseable_wav(
 
 def test_synthesize_text_passes_voice_and_language(fake_tts_client: MagicMock) -> None:
     """Test that the voice name and language code reach the synthesize_speech call."""
-    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
-        audio_content=b"\x00\x00"
-    )
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x00")
 
     reader.synthesize_text(
         fake_tts_client,
@@ -212,9 +204,7 @@ def test_resolve_voice_pool_fixed_mode_returns_one_canonical_name(
     tmp_config: StarlingConfig, fake_tts_client: MagicMock
 ) -> None:
     """Test that FIXED mode resolves a single voice name to its canonical spelling."""
-    config = replace(
-        tmp_config, voice_mode=VoiceMode.FIXED, voice_name="EN-us-chirp3-hd-aoede"
-    )
+    config = replace(tmp_config, voice_mode=VoiceMode.FIXED, voice_name="EN-us-chirp3-hd-aoede")
 
     result = reader.resolve_voice_pool(config, fake_tts_client)
 
@@ -240,9 +230,7 @@ def test_resolve_voice_pool_unknown_name_raises(
     tmp_config: StarlingConfig, fake_tts_client: MagicMock
 ) -> None:
     """Test that an unrecognized voice name in the pool raises UnknownVoiceError."""
-    config = replace(
-        tmp_config, voice_mode=VoiceMode.RANDOM, voice_pool=("en-US-Nope-Z",)
-    )
+    config = replace(tmp_config, voice_mode=VoiceMode.RANDOM, voice_pool=("en-US-Nope-Z",))
 
     with pytest.raises(reader.UnknownVoiceError):
         reader.resolve_voice_pool(config, fake_tts_client)
@@ -314,9 +302,7 @@ def test_process_file_happy_path_writes_wav_and_logs_usage(
     isolated_logging: None,
 ) -> None:
     """Test that a successful synthesis writes the .wav and logs usage with the stem."""
-    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
-        audio_content=b"\x00\x01"
-    )
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
     filepath = tmp_config.input_dir / "article.txt"
     filepath.write_text("Hello world.", encoding="utf-8")
     usage_logger = reader.initialize_usage_logger(tmp_config.usage_log_path)
@@ -344,9 +330,7 @@ def test_process_file_synthesizes_number_converted_text(
     isolated_logging: None,
 ) -> None:
     """Test that process_file sends number-converted text to synthesize_speech, not digits."""
-    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
-        audio_content=b"\x00\x01"
-    )
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
     filepath = tmp_config.input_dir / "article.txt"
     filepath.write_text("There are 1,234 reasons.", encoding="utf-8")
     usage_logger = reader.initialize_usage_logger(tmp_config.usage_log_path)
@@ -584,9 +568,7 @@ def test_process_file_empty_input_file_logs_zero_characters(
     isolated_logging: None,
 ) -> None:
     """Test the zero-character boundary: an empty input file still synthesizes and logs."""
-    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
-        audio_content=b"\x00\x01"
-    )
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
     filepath = tmp_config.input_dir / "empty.txt"
     filepath.write_text("", encoding="utf-8")
     usage_logger = reader.initialize_usage_logger(tmp_config.usage_log_path)
@@ -619,9 +601,7 @@ def test_process_file_random_voice_mode_selects_from_pool(
     RANDOM branch of select_voice() untested at this layer. A single-element pool makes
     the draw deterministic without needing to control the RNG.
     """
-    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
-        audio_content=b"\x00\x01"
-    )
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
     config = replace(tmp_config, voice_mode=VoiceMode.RANDOM)
     filepath = config.input_dir / "article.txt"
     filepath.write_text("Hello world.", encoding="utf-8")
@@ -830,9 +810,7 @@ def test_run_read_dry_run_makes_no_api_call(
 
     monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(dry_run=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(dry_run=True))
 
     out = capsys.readouterr().out
     assert result == 0
@@ -857,9 +835,7 @@ def test_run_read_dry_run_does_not_archive_or_prompt(
 
     monkeypatch.setattr(reader, "confirm_overwrite", _raise)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(dry_run=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(dry_run=True))
 
     assert result == 0
     assert filepath_a.exists()
@@ -896,13 +872,9 @@ def test_run_read_archives_only_successful_files(
         SimpleNamespace(audio_content=b"\x00\x01"),
         OSError("disk full"),
     ]
-    monkeypatch.setattr(
-        reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client
-    )
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(assume_yes=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(assume_yes=True))
 
     assert result == 0
     assert not (tmp_config.input_dir / "a.txt").exists()
@@ -958,12 +930,8 @@ def test_run_read_unknown_voice_returns_one(
 ) -> None:
     """Test that an unresolvable configured voice returns 1 naming the unknown voice."""
     (tmp_config.input_dir / "article.txt").write_text("Hello.", encoding="utf-8")
-    config = replace(
-        tmp_config, voice_mode=VoiceMode.RANDOM, voice_pool=("en-US-Nope-Z",)
-    )
-    monkeypatch.setattr(
-        reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client
-    )
+    config = replace(tmp_config, voice_mode=VoiceMode.RANDOM, voice_pool=("en-US-Nope-Z",))
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
 
     result = reader.run_read(config=config)
 
@@ -979,9 +947,7 @@ def test_run_read_unreachable_catalog_returns_one(
 ) -> None:
     """Test that a catalog fetch failure returns 1 with a network-error message."""
     (tmp_config.input_dir / "article.txt").write_text("Hello.", encoding="utf-8")
-    monkeypatch.setattr(
-        reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client
-    )
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
     monkeypatch.setattr(
         reader,
         "fetch_voices",
@@ -1053,9 +1019,7 @@ def test_run_read_processes_files_in_sorted_filename_order(
     (tmp_config.input_dir / "a.txt").write_text("A content.", encoding="utf-8")
     (tmp_config.input_dir / "b.txt").write_text("B content.", encoding="utf-8")
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(dry_run=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(dry_run=True))
 
     out = capsys.readouterr().out
     assert result == 0
@@ -1071,9 +1035,7 @@ def test_run_read_ignores_non_txt_files(
     (tmp_config.input_dir / "a.txt").write_text("Text file.", encoding="utf-8")
     (tmp_config.input_dir / "notes.md").write_text("Markdown file.", encoding="utf-8")
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(dry_run=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(dry_run=True))
 
     out = capsys.readouterr().out
     assert result == 0
@@ -1100,9 +1062,7 @@ def test_run_read_confirm_yes_proceeds_to_credentials(
 
     monkeypatch.setattr(reader, "require_credentials", raising_require_credentials)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(confirm=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(confirm=True))
 
     assert result == 1
 
@@ -1122,9 +1082,7 @@ def test_run_read_confirm_no_returns_zero_without_credentials(
 
     monkeypatch.setattr(reader, "require_credentials", raising_require_credentials)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(confirm=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(confirm=True))
 
     out = capsys.readouterr().out
     assert result == 0
@@ -1143,9 +1101,7 @@ def test_run_read_confirm_prints_dry_run_report(
     filepath.write_text("x" * 100, encoding="utf-8")
     monkeypatch.setattr(reader, "confirm_synthesis", lambda **_kw: False)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(confirm=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(confirm=True))
 
     out = capsys.readouterr().out
     assert result == 0
@@ -1174,9 +1130,7 @@ def test_run_read_confirm_no_never_constructs_client(
 
     monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise)
 
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(confirm=True)
-    )
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(confirm=True))
 
     assert result == 0
 
@@ -1226,11 +1180,11 @@ def test_run_read_no_input_files_never_prompts(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Test that confirm=True with empty input_dir returns 0 without calling confirm_synthesis."""
-    monkeypatch.setattr(reader, "confirm_synthesis", MagicMock(side_effect=AssertionError("should not be called")))
-
-    result = reader.run_read(
-        config=tmp_config, options=reader.ReadOptions(confirm=True)
+    monkeypatch.setattr(
+        reader, "confirm_synthesis", MagicMock(side_effect=AssertionError("should not be called"))
     )
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(confirm=True))
 
     out = capsys.readouterr().out
     assert result == 0
@@ -1245,9 +1199,7 @@ def test_run_read_no_input_files_never_prompts(
 def test_format_monthly_total_zero_and_nonzero() -> None:
     """Test the rendered line for a zero total and for a nonzero total's percentage rounding."""
     zero = reader.format_monthly_total({"current_month": "2026-09", "total_chars": 0})
-    nonzero = reader.format_monthly_total(
-        {"current_month": "2026-09", "total_chars": 850_000}
-    )
+    nonzero = reader.format_monthly_total({"current_month": "2026-09", "total_chars": 850_000})
 
     assert zero == "[2026-09] Total characters logged this month: 0 | 0%"
     assert nonzero == "[2026-09] Total characters logged this month: 850,000 | 85%"
@@ -1266,8 +1218,6 @@ def test_run_usage_prints_the_same_line_read_prints(
 
     result = reader.run_usage(config=tmp_config)
 
-    expected = reader.format_monthly_total(
-        reader.get_monthly_total(tmp_config.usage_log_path)
-    )
+    expected = reader.format_monthly_total(reader.get_monthly_total(tmp_config.usage_log_path))
     assert result == 0
     assert capsys.readouterr().out == expected + "\n"

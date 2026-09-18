@@ -105,9 +105,7 @@ def test_fetch_voices_maps_and_sorts(fake_tts_client: MagicMock) -> None:
     families = [v.family for v in result]
     names = [v.name for v in result]
     assert families == sorted(families), f"Not sorted by family: {families}"
-    assert (
-        names[0:2] == sorted(names[0:2])
-    ), "Chirp3-HD pair not sorted by name within family"
+    assert names[0:2] == sorted(names[0:2]), "Chirp3-HD pair not sorted by name within family"
 
     # Verify the Chirp3-HD pair carries correct family and language_codes.
     chirp3_hd_voices = [v for v in result if v.family == "Chirp3-HD"]
@@ -212,7 +210,10 @@ def test_validate_reports_every_unknown_name(
     assert "unknown-one-Q" in message
     assert "unknown-two-R" in message
     # Neither valid name should be in the message.
-    assert "en-US-Chirp3-HD-Aoede" not in message or "Unknown voice name: en-US-Chirp3-HD-Aoede" not in message
+    assert (
+        "en-US-Chirp3-HD-Aoede" not in message
+        or "Unknown voice name: en-US-Chirp3-HD-Aoede" not in message
+    )
     assert "en-US-Neural2-C" not in message or "Unknown voice name: en-US-Neural2-C" not in message
 
 
@@ -684,7 +685,10 @@ def test_pricing_notice_empty_families_list() -> None:
     """Verify an empty families sequence still produces a well-formed (if bare) message."""
     result = voices.pricing_notice([])
 
-    assert result == f"Billing:  — voice families are priced differently on your own Google Cloud account. Current rates: {voices.PRICING_URL}"
+    assert (
+        result
+        == f"Billing:  — voice families are priced differently on your own Google Cloud account. Current rates: {voices.PRICING_URL}"
+    )
 
 
 def test_pricing_notice_single_family() -> None:

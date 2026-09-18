@@ -32,7 +32,9 @@ def _no_update_check(monkeypatch: pytest.MonkeyPatch) -> None:
     the update-check wiring re-patch this themselves, which simply overrides it further.
     """
     monkeypatch.setattr(
-        starling.update_check, "maybe_notify_update", lambda *_args, **_kwargs: None,
+        starling.update_check,
+        "maybe_notify_update",
+        lambda *_args, **_kwargs: None,
     )
 
 

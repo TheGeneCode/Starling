@@ -124,9 +124,7 @@ def test_poll_uses_shorter_text_as_filename_regardless_of_order(
     assert expected_path.read_text(encoding="utf-8") == long_text
 
 
-def test_poll_sanitizes_the_filename(
-    tk_root: tk.Tk, tmp_config: StarlingConfig
-) -> None:
+def test_poll_sanitizes_the_filename(tk_root: tk.Tk, tmp_config: StarlingConfig) -> None:
     """Test that Windows-reserved characters are stripped from the derived filename."""
     short_text = 'a:b?c"d/e'
     long_text = "This is the long article body that becomes the file contents."
@@ -142,9 +140,7 @@ def test_poll_sanitizes_the_filename(
     assert result == tmp_config.input_dir / "abcde.txt"
 
 
-def test_poll_ignores_unchanged_clipboard(
-    tk_root: tk.Tk, tmp_config: StarlingConfig
-) -> None:
+def test_poll_ignores_unchanged_clipboard(tk_root: tk.Tk, tmp_config: StarlingConfig) -> None:
     """Test that an unchanged clipboard value does not fill the second slot."""
     window = CaptureWindow(
         tmp_config,
@@ -159,9 +155,7 @@ def test_poll_ignores_unchanged_clipboard(
     assert window.second_text == ""
 
 
-def test_poll_ignores_empty_clipboard(
-    tk_root: tk.Tk, tmp_config: StarlingConfig
-) -> None:
+def test_poll_ignores_empty_clipboard(tk_root: tk.Tk, tmp_config: StarlingConfig) -> None:
     """Test that an empty clipboard is a true no-op: previous_clipboard is untouched."""
     window = CaptureWindow(
         tmp_config,

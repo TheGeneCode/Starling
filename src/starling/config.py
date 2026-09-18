@@ -127,8 +127,7 @@ def _env_flag(name: str, *, default: bool) -> bool:
     if raw in FALSEY_VALUES:
         return False
     msg = (
-        f"{ENV_PREFIX}{name}={raw!r} is not valid. Use one of: "
-        "true, false, 1, 0, yes, no, on, off."
+        f"{ENV_PREFIX}{name}={raw!r} is not valid. Use one of: true, false, 1, 0, yes, no, on, off."
     )
     raise ConfigError(msg)
 

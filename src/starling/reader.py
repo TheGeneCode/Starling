@@ -397,11 +397,7 @@ def resolve_voice_pool(
     DefaultCredentialsError / GoogleAPICallError when the catalog is unreachable.
     ListVoices is not billed, so this is free early validation.
     """
-    configured = (
-        (config.voice_name,)
-        if config.voice_mode is VoiceMode.FIXED
-        else config.voice_pool
-    )
+    configured = (config.voice_name,) if config.voice_mode is VoiceMode.FIXED else config.voice_pool
     return validate_voice_names(configured, fetch_voices(client, config.language_code))
 
 
@@ -502,11 +498,7 @@ def process_file(
 
 def _configured_voice_names(config: StarlingConfig) -> tuple[str, ...]:
     """Configured voice names, unvalidated — a dry run never contacts Google."""  # noqa: D401
-    return (
-        (config.voice_name,)
-        if config.voice_mode is VoiceMode.FIXED
-        else config.voice_pool
-    )
+    return (config.voice_name,) if config.voice_mode is VoiceMode.FIXED else config.voice_pool
 
 
 def plan_dry_run(
@@ -565,8 +557,7 @@ def print_dry_run(
     print(f"{len(entries)} file(s), {total:,} characters would be billed.")
     print(format_monthly_total(monthly))
     print(
-        f"After this run the month would total "
-        f"{monthly['total_chars'] + total:,} characters.",
+        f"After this run the month would total {monthly['total_chars'] + total:,} characters.",
     )
     print(
         pricing_notice(
@@ -612,8 +603,7 @@ def run_read(
         print()
         if not confirm_synthesis():
             print(
-                "Cancelled. Nothing was synthesized; "
-                "your files are still in the input directory.",
+                "Cancelled. Nothing was synthesized; your files are still in the input directory.",
             )
             return 0
         print()

@@ -267,12 +267,7 @@ def test_heading_pattern_excludes_h1_h5_and_blockquoted_headings() -> None:
     blockquoted case is a known, un-fixed limitation -- GitHub's real anchor generation does
     cover blockquoted headings -- called out here rather than silently assumed.
     """
-    text = (
-        "# Document Title\n"
-        "## Included Section\n"
-        "##### Also Excluded\n"
-        "> ### Blockquoted Heading\n"
-    )
+    text = "# Document Title\n## Included Section\n##### Also Excluded\n> ### Blockquoted Heading\n"
     assert _readme_headings(text) == ["Included Section"]
 
 

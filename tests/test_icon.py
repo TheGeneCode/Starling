@@ -110,7 +110,5 @@ def test_capture_window_builds_when_the_icon_is_missing(
         raise FileNotFoundError(2, "No such file", "starling.ico")
 
     monkeypatch.setattr(starling.capture, "as_file", _missing)
-    window = starling.capture.CaptureWindow(
-        tmp_config, root=tk_root, clipboard_read=lambda: ""
-    )
+    window = starling.capture.CaptureWindow(tmp_config, root=tk_root, clipboard_read=lambda: "")
     assert window.root is tk_root

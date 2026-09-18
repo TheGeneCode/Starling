@@ -114,10 +114,7 @@ def render_session(text: str, output_path: Path, *, scale: int = 2) -> Path:
     measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     big_line_height = round(BASE_FONT_SIZE * scale * LINE_HEIGHT_MULT)
     max_line_width = max(
-        (
-            measure.textlength(line, font=_line_font(line, big_regular, big_bold))
-            for line in lines
-        ),
+        (measure.textlength(line, font=_line_font(line, big_regular, big_bold)) for line in lines),
         default=0.0,
     )
 
@@ -158,11 +155,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    text = (
-        sys.stdin.read()
-        if args.input == "-"
-        else Path(args.input).read_text(encoding="utf-8")
-    )
+    text = sys.stdin.read() if args.input == "-" else Path(args.input).read_text(encoding="utf-8")
 
     output_path = render_session(text, args.output)
     print(f"{output_path} ({output_path.stat().st_size:,} bytes)")

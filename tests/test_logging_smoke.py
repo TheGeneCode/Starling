@@ -11,9 +11,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_dedicated_file_logger_writes_to_given_path(
-    tmp_path: Path, isolated_logging: None
-) -> None:
+def test_dedicated_file_logger_writes_to_given_path(tmp_path: Path, isolated_logging: None) -> None:
     """Test that dedicated_file_logger writes messages to the specified file."""
     log_path = tmp_path / "tts_usage.log"
     logger = dedicated_file_logger(
@@ -28,9 +26,7 @@ def test_dedicated_file_logger_writes_to_given_path(
     assert "characters: 1,234" in content
 
 
-def test_dedicated_file_logger_creates_parent_dirs(
-    tmp_path: Path, isolated_logging: None
-) -> None:
+def test_dedicated_file_logger_creates_parent_dirs(tmp_path: Path, isolated_logging: None) -> None:
     """Test that dedicated_file_logger creates parent directories."""
     nested_path = tmp_path / "nested" / "deeper" / "usage.log"
     logger = dedicated_file_logger(
@@ -85,9 +81,7 @@ def test_dedicated_file_logger_reinit_replaces_handler(
     assert not path1.exists() or "message" not in path1.read_text(encoding="utf-8")
 
 
-def test_configure_logging_writes_error_log(
-    tmp_path: Path, isolated_logging: None
-) -> None:
+def test_configure_logging_writes_error_log(tmp_path: Path, isolated_logging: None) -> None:
     """Test that configure_logging writes ERROR level messages to log file."""
     configure_logging(
         "ERROR",

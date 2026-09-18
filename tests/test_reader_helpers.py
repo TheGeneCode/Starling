@@ -59,9 +59,7 @@ if TYPE_CHECKING:
             id="year_only_parens_not_removed",
         ),
         pytest.param("", "", id="empty_string"),
-        pytest.param(
-            "No citations here at all.", "No citations here at all.", id="no_match_noop"
-        ),
+        pytest.param("No citations here at all.", "No citations here at all.", id="no_match_noop"),
     ],
 )
 def test_remove_citations(text: str, expected: str) -> None:
@@ -77,9 +75,7 @@ def test_remove_citations(text: str, expected: str) -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        pytest.param(
-            "$1,300 million", "1.3 billion dollars", id="million_rescaled_to_billion"
-        ),
+        pytest.param("$1,300 million", "1.3 billion dollars", id="million_rescaled_to_billion"),
         pytest.param(
             "$1,300 MILLION",
             "1.3 billion dollars",
@@ -95,9 +91,7 @@ def test_remove_citations(text: str, expected: str) -> None:
             "one thousand two hundred and thirty-four dollars fifty-six cents",
             id="currency_with_cents",
         ),
-        pytest.param(
-            "$1,000,000", "one million dollars", id="plain_currency_with_commas"
-        ),
+        pytest.param("$1,000,000", "one million dollars", id="plain_currency_with_commas"),
         pytest.param(
             "1,234",
             "one thousand two hundred and thirty-four",
@@ -529,10 +523,7 @@ def test_log_usage_first_entry_running_total_equals_char_count(
     reader.log_usage(logger, "file1.txt", "voice-a", 1234)
 
     content = log_path.read_text(encoding="utf-8")
-    assert (
-        "file1.txt | voice: voice-a | characters: 1,234 | monthly total: 1,234"
-        in content
-    )
+    assert "file1.txt | voice: voice-a | characters: 1,234 | monthly total: 1,234" in content
 
 
 def test_log_usage_accumulates_onto_existing_monthly_total(
@@ -555,9 +546,7 @@ def test_log_usage_accumulates_onto_existing_monthly_total(
     reader.log_usage(logger, "file2.txt", "voice-b", 500)
 
     lines = log_path.read_text(encoding="utf-8").splitlines()
-    assert lines[-1].endswith(
-        "file2.txt | voice: voice-b | characters: 500 | monthly total: 1,500"
-    )
+    assert lines[-1].endswith("file2.txt | voice: voice-b | characters: 500 | monthly total: 1,500")
 
 
 # ---------------------------------------------------------------------------
