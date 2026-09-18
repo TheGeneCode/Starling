@@ -1,4 +1,11 @@
-"""Processes all .txt files in the specified input directory by removing citations, converting the text to speech using Google Cloud TTS, and saving the resulting audio as .wav files in the output directory. Displays a spinner animation during processing, handles file overwrites with user confirmation, logs errors and usage, and moves processed files to an archive directory."""
+"""
+Batch-converts .txt files in the input directory to narrated .wav audio.
+
+Removes citations, converts the text to speech using Google Cloud TTS, and saves the
+resulting audio as .wav files in the output directory. Displays a spinner animation
+during processing, handles file overwrites with user confirmation, logs errors and
+usage, and moves processed files to an archive directory.
+"""
 
 from __future__ import annotations
 
@@ -76,7 +83,8 @@ def spinner(should_spin: Event) -> None:
     """
     Display a spinning animation on the console while a task is being executed.
 
-    Args: should_spin (Event): An Event object that controls whether the spinner animation should continue spinning or stop.
+    Args: should_spin (Event): An Event object that controls whether the spinner
+    animation should continue spinning or stop.
     """
     chars = itertools.cycle(r"-\|/")
     while should_spin.is_set():
@@ -99,7 +107,7 @@ def convert_numbers_to_words(text: str) -> str:
 
     # 1. Handle "X million/billion" currency scaling
     # Pattern: $1,300 million -> 1.3 billion dollars
-    def scale_currency(match):
+    def scale_currency(match: re.Match[str]) -> str:
         val_str = match.group(1).replace(",", "")
         unit = match.group(2).lower()
         val = float(val_str)
@@ -143,7 +151,7 @@ def convert_numbers_to_words(text: str) -> str:
     )
 
     # 2. Handle simple currency ($1,234.56 -> one thousand... dollars and fifty-six cents)
-    def currency_to_words(match):
+    def currency_to_words(match: re.Match[str]) -> str:
         val_str = match.group(1).replace(",", "")
         try:
             val = float(val_str)
@@ -158,7 +166,7 @@ def convert_numbers_to_words(text: str) -> str:
     text = re.sub(r"\$(\d{1,3}(?:,\d{3})+(?:\.\d+)?)", currency_to_words, text)
 
     # 3. Handle plain numbers with commas (1,234 -> one thousand...)
-    def number_to_words(match):
+    def number_to_words(match: re.Match[str]) -> str:
         val_str = match.group(0).replace(",", "")
         try:
             val = int(val_str)  # num2words handles ints best for cardinal

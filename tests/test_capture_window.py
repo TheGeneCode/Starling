@@ -339,7 +339,7 @@ def test_run_capture_returns_zero_and_runs_window_on_success(
 def test_run_capture_lets_unexpected_exception_propagate(
     monkeypatch: pytest.MonkeyPatch, tmp_config: StarlingConfig
 ) -> None:
-    """Test that only ConfigError is caught -- any other exception from ensure_directories propagates."""
+    """Only ConfigError is caught; other exceptions from ensure_directories propagate."""
 
     def raiser(config: StarlingConfig) -> None:
         raise RuntimeError("disk full")

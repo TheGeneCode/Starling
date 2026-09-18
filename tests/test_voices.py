@@ -685,10 +685,11 @@ def test_pricing_notice_empty_families_list() -> None:
     """Verify an empty families sequence still produces a well-formed (if bare) message."""
     result = voices.pricing_notice([])
 
-    assert (
-        result
-        == f"Billing:  — voice families are priced differently on your own Google Cloud account. Current rates: {voices.PRICING_URL}"
+    expected = (
+        "Billing:  — voice families are priced differently on your own Google Cloud "
+        f"account. Current rates: {voices.PRICING_URL}"
     )
+    assert result == expected
 
 
 def test_pricing_notice_single_family() -> None:

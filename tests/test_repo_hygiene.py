@@ -331,7 +331,7 @@ def _fake_subprocess_run(
     *, git_dir_ok: bool, other_returncode: int, other_stdout: str = "", other_stderr: str = "boom"
 ) -> Callable[..., subprocess.CompletedProcess[str]]:
     """
-    Build a fake ``subprocess.run`` that answers ``rev-parse --git-dir`` and other git calls differently.
+    Build a fake ``subprocess.run`` answering ``rev-parse --git-dir`` and other git calls.
 
     Models a repo that *has* a ``.git`` directory (so ``_require_git`` never skips) but
     where some other git invocation fails -- a corrupted index, a permission error, a
