@@ -27,13 +27,11 @@ yet, but the pin is two minors and one bugfix behind and the consumers registry 
 `genekit/python/README.md` still lists this repo under its old name "TTS". Run `/genekit bump`,
 re-lock, and fix the registry row.
 
-### 2. Uncommitted agent-tooling changes in the working tree
+### 2. No `permissions.allow` list, so every `uv run` prompts
 
-`git status`: modified `.claude/CLAUDE.md`, untracked `.claude/hooks/` and
-`.claude/settings.json`. The settings file registers the `post_edit_ruff.py` hook but has no
-`permissions.allow` list, so every `uv run` prompts. The CLAUDE.md diff adds a hook-description
-line that is already in the global CLAUDE.md. Commit the hook and settings (with the common
-allowlist from MeadowLark), drop the redundant CLAUDE.md line.
+`.claude/settings.json` has no `permissions.allow` list. Add the common allowlist from
+MeadowLark. (The hook half of this item is resolved: `post_edit_ruff.py` and its registration
+are now the global hook in `~/.claude/hooks/`, not a local copy — see `dev/backlog.txt` item 3.)
 
 ### 3. `ruff format` drift, and CI deliberately does not check it
 

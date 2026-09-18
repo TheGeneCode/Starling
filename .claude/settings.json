@@ -1,15 +1,10 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/post_edit_ruff.py\""
-          }
-        ]
-      }
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(uv sync *)",
+      "PowerShell(uv run *)",
+      "PowerShell(uv sync *)"
     ]
   }
 }
