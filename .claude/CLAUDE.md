@@ -25,6 +25,8 @@ pointers to it and must not be allowed to accumulate rules of their own.
   ignore list. **Adding a rule to that ignore list requires a comment saying why**, matching
   the existing entries.
 - The Ruff extension auto-fixes on save (import order, trailing commas, whitespace).
+- A PostToolUse hook auto-runs `ruff check` on every edited `.py` file (findings fed back
+  automatically); still run a full `uv run ruff check` before commit for cross-file issues.
 - **Do not hand-fix auto-fixable findings.** Focus review effort on type and null
   correctness, logic errors, security, and architecture.
 - Suppress a rule inline with a `# noqa: RULE` carrying a reason, only when the rule is
