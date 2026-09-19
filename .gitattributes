@@ -1,0 +1,26 @@
+* text=auto eol=lf
+
+*.py    text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.toml  text eol=lf
+*.json  text eol=lf
+
+# PowerShell hooks are invoked by Windows powershell.exe; CRLF avoids parser
+# surprises in here-strings.
+*.ps1   text eol=crlf
+
+*.sh    text eol=lf
+
+# Binary — never touch.
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.webp  binary
+*.woff2 binary
+*.db    binary
+*.sqlite binary
+*.sqlite3 binary
+
+uv.lock -diff
