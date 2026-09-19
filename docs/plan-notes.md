@@ -121,10 +121,8 @@
 - **The release workflow hard-fails if the tag, `pyproject.toml`'s version, and
   `CHANGELOG.md` disagree.** The bump-commit-then-tag order in `docs/RELEASING.md` is not
   advisory. Any future automation that creates tags must follow it.
-- **CI does not run `ruff format --check`** because the tree still has the pre-existing
-  drift in `src/starling/voices.py`, `tests/conftest.py`, `tests/test_config.py`, and
-  `tests/test_voices.py` noted under Phase 3c. A whole-tree reformat commit is the
-  prerequisite for adding that gate.
+- **CI runs `ruff format --check`** (added after the whole-tree reformat `a7f5799`). Run
+  `uv run ruff format` before committing; a drifted file fails the Lint job.
 - **The wheel-contents assertion in `.github/workflows/ci.yml` is load-bearing**, not
   decoration. It is the only check that catches the icon dropping out of the package or
   the genekit URL reverting to a bare name; both failures are otherwise invisible until
@@ -200,13 +198,6 @@
   decide whether a bare-flag invocation like `starling --foo` is treated as `starling read
   --foo` or passed straight to the root parser. Forgetting to add a new top-level flag to
   `TOP_LEVEL_FLAGS` would silently rewrite it into a `read` argument instead.
-- **`ruff format --check` on the whole tree still reports pre-existing drift** in
-  `src/starling/voices.py`, `tests/conftest.py`, `tests/test_config.py`, and
-  `tests/test_voices.py` — flagged already in Phase 3b's notes and left alone again in 3c
-  since neither phase's diff touched those specific lines. Whoever next edits those files
-  should expect `ruff format` to reflow unrelated lines nearby; a dedicated
-  whole-tree-reformat commit (with no logic changes) would clear this cleanly if it starts
-  becoming a recurring distraction.
 - **README's `## Usage` section was rewritten in 3c to reflect the new CLI**, but the rest
   of the README (Setup Instructions' `pip install -r requirements.txt`, the File Structure
   section listing `articleReader.py`/`requirements.txt`, Troubleshooting) is still stale —

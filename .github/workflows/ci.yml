@@ -48,12 +48,11 @@ jobs:
       - name: Tests
         run: uv run pytest -q
 
-      # `ruff format --check` is deliberately NOT run here: the tree has known
-      # pre-existing format drift (src/starling/voices.py, tests/conftest.py,
-      # tests/test_config.py, tests/test_voices.py) recorded in docs/plan-notes.md.
-      # Add it only after a dedicated whole-tree reformat commit.
       - name: Lint
         run: uv run ruff check
+
+      - name: Format
+        run: uv run ruff format --check
 
   package:
     name: package
