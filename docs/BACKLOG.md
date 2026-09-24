@@ -9,7 +9,7 @@ with a re-diagnosis.
 
 ## Issue numbering
 
-**Next issue number: 9.**
+**Next issue number: 10.**
 
 Issue numbers are permanent IDs. Do not reuse a number when an issue is closed or removed.
 
@@ -18,32 +18,6 @@ formatting issues in CHANGELOG.md", 2026-09-03, plus uncommitted `.claude/` chan
 system-wide half of the same audit is in `dev/backlog.txt`.
 
 ## Open
-
-### 1. genekit is pinned at `py-v0.1.0`; every other consumer is on `py-v0.3.1`
-
-`pyproject.toml` `dependencies` carries `genekit @ git+...@py-v0.1.0`. py-v0.3.1 fixed
-`format_timestamp` cross-platform behaviour and shipped `genekit.tz`; nothing here uses `tz`
-yet, but the pin is two minors and one bugfix behind and the consumers registry in
-`genekit/python/README.md` still lists this repo under its old name "TTS". Run `/genekit bump`,
-re-lock, and fix the registry row.
-
-### 2. No `permissions.allow` list, so every `uv run` prompts
-
-`.claude/settings.json` has no `permissions.allow` list. Add the common allowlist from
-MeadowLark. (The hook half of this item is resolved: `post_edit_ruff.py` and its registration
-are now the global hook in `~/.claude/hooks/`, not a local copy — see `dev/backlog.txt` item 3.)
-
-### 3. `ruff format` drift, and CI deliberately does not check it
-
-15 of 44 files differ from `uv run ruff format` output. `.github/workflows/ci.yml` has a comment
-reserving the `ruff format --check` step "after a dedicated whole-tree reformat commit"
-(`docs/plan-notes.md` records the four files first noticed). Do that commit, then enable the
-step in CI.
-
-### 4. No `.gitattributes`
-
-The repo relies on each tool's defaults for line endings; `.claude/hooks/post_edit_ruff.py` is
-byte-identical to MeadowLark's except for CRLF. Copy a sibling repo's `.gitattributes`.
 
 ### 5. `normalize_version` is byte-identical to MeadowLark's
 
@@ -55,26 +29,51 @@ copies diverge.
 ### 6. Release tooling forked from MeadowLark and drifting
 
 `scripts/release.ps1` (136 lines vs MeadowLark's 78), `scripts/make_icon.py`,
-`scripts/make_social_preview.py` and `.github/workflows/release.yml` (80 vs 63 lines) began as
+`scripts/make_social_preview.py` and `.github/workflows/release.yml` (80 vs 55 lines) began as
 copies of MeadowLark's and have diverged in both directions. Each release-process fix now lands
-in one repo. `dev/backlog.txt` item 14 covers the shared solution; locally, note which copy is
-the newer one in `docs/RELEASING.md` so the next fix starts from it.
-
-### 7. `line-length` unset in `pyproject.toml`
-
-`[tool.ruff]` sets `src` only; line length falls to ruff's default 88 while MeadowLark's sibling
-config and every other repo use 100. Either is fine; the mismatch means shared snippets and
-cross-repo copy of code reformat on arrival. Pick 100 to match.
-
-### 8. Verify the kittentts removal left nothing behind
-
-`dev/TTS/plans/TODO.txt` asked: "kittentts is dropped right? drop tests associated with it
-too". `rg -i kittentts src tests README.md` finds nothing on 2026-09-18, so this looks done;
-check `uv.lock`, `pyproject.toml` and `CHANGELOG.md` for a removal entry, then close.
-*(Moved from `dev/TTS/plans/TODO.txt`.)*
-
-### 9. launching from my shortcut takes a bit longer than I'd expect
+in one repo. `dev/backlog.txt` item 14 covers the shared solution. Which copy is newer is
+recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
 
 ## Closed
 
-(none yet)
+### 9. `starling capture` imports the whole Google TTS stack before opening its window
+
+Closed 2026-09-24. All three fixes landed. `cli.py` imports `starling.reader` inside
+`_handle_read` / `_handle_usage`; `starling.__version__` resolves on first access (module
+`__getattr__`) and `--version` uses a lazy action, so `importlib.metadata` is not imported
+either; capture passes the update check to `run_capture(on_ready=...)`, which runs it
+`ON_READY_DELAY_MS` after the window is up. Measured after (warm cache, `-X importtime`):
+`import starling.cli` ~25 ms (was ~0.75 s); `starling.cli` + `starling.capture` load 142
+modules (was 661). `test_capture_does_not_import_reader_or_version_metadata` in
+`tests/test_cli.py` guards it. The `uv sync --compile-bytecode` note still applies.
+
+### 1. genekit is pinned at `py-v0.1.0`; every other consumer is on `py-v0.3.1`
+
+Closed 2026-09-24. Commit 93e45f3 (atomic_write migration) bumped the pin to `py-v0.4.0`, the
+latest `py-v*` tag; `uv lock --check` is clean and the installed version is 0.4.0. The consumers
+registry in `genekit/python/README.md` lists this repo as "Starling" at `py-v0.4.0`.
+
+### 2. No `permissions.allow` list, so every `uv run` prompts
+
+Closed 2026-09-24. Commit fe5b160 added `permissions.allow` to `.claude/settings.json` covering
+`uv run *` and `uv sync *` for both the Bash and PowerShell tools.
+
+### 3. `ruff format` drift, and CI deliberately does not check it
+
+Closed 2026-09-24. Commit a7f5799 reformatted the whole tree; d3b3e0f added the
+`uv run ruff format --check` step to `.github/workflows/ci.yml`. `ruff format --check` reports
+all 45 files formatted.
+
+### 4. No `.gitattributes`
+
+Closed 2026-09-24. Commit 2590697 added `.gitattributes` (LF for text, CRLF for `*.ps1`,
+binaries marked).
+
+### 7. `line-length` unset in `pyproject.toml`
+
+Closed 2026-09-24. `[tool.ruff]` now sets `line-length = 100` (commits a7f5799, 9a6253f).
+
+### 8. Verify the kittentts removal left nothing behind
+
+Closed 2026-09-24. No `kittentts` in `uv.lock` or `pyproject.toml`; `CHANGELOG.md` records the
+removal under `### Removed`.

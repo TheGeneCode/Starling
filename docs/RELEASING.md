@@ -73,6 +73,30 @@ root: `.\scripts\release.ps1 -Version X.Y.Z`.
   the same version.
 - **Otherwise**: never re-point a published tag. Fix forward with a patch release.
 
+## Shared ancestry with MeadowLark: start from this copy
+
+The release tooling began as copies of MeadowLark's and has diverged. **Starling's copy is
+the more developed one; when fixing a release-process bug, start here and port the fix
+across, not the other way.** As of 2026-09-24:
+
+- `scripts/release.ps1` — Starling's adds a `main`-branch and clean-tree guard, runs the
+  checks, rewrites `CHANGELOG.md` (heading and link definitions, with duplicate-section
+  guards), and runs `uv lock`. MeadowLark's only stamps the version, commits with
+  `git add .`, tags, and pushes.
+- `.github/workflows/release.yml` — not a straight fork. MeadowLark's builds a PyInstaller
+  exe and an Inno Setup installer on Windows; Starling's builds a `py3-none-any` wheel on
+  Linux. Only Starling's has the tag/version and changelog gates, `permissions:
+  contents: read`, and `setup-uv@v6`. MeadowLark's is more recently touched
+  (2026-09-24), but only to drop the obsolete genekit auth step.
+- `scripts/make_icon.py` — Starling writes the `.ico` into the package
+  (`src/starling/resources/`) so it ships in the wheel; MeadowLark writes it beside the
+  source PNG.
+- `scripts/make_social_preview.py` — same script with different palette and text. Starling's
+  adds the font-fallback chain and a wider comment on the aspect-ratio reasoning.
+
+The shared solution is `dev/backlog.txt` item 14; until it lands, a fix to any of these
+files should be checked against the other repo's copy.
+
 ## Why there is no PyPI publish
 
 `genekit` is declared as a PEP 508 direct reference

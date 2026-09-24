@@ -7,9 +7,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from starling import __version__
-from starling.reader import ReadOptions, run_read, run_usage
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -31,7 +28,50 @@ examples:
 """
 
 
+class _VersionAction(argparse.Action):
+    """
+    `--version`, resolving the version only when the flag is given.
+
+    argparse's own "version" action takes the string at parser-build time, and resolving
+    it means importing `importlib.metadata` (~60 ms) on every invocation.
+    """
+
+    def __init__(self, option_strings: Sequence[str], dest: str, **kwargs: object) -> None:
+        super().__init__(
+            option_strings,
+            dest,
+            nargs=0,
+            default=argparse.SUPPRESS,
+            help="show program's version number and exit",
+            **kwargs,
+        )
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        from starling import __version__  # noqa: PLC0415
+
+        print(f"starling {__version__}")
+        parser.exit()
+
+
+def _check_for_updates() -> None:
+    # Imported lazily: --help and --version never reach this, and capture calls it only
+    # once its window is up.
+    from starling.update_check import maybe_notify_update  # noqa: PLC0415
+
+    maybe_notify_update()
+
+
 def _handle_read(args: argparse.Namespace) -> int:
+    # Lazy like every handler: starling.reader pulls in the whole Google TTS stack
+    # (~0.7 s), which capture and voices never use.
+    from starling.reader import ReadOptions, run_read  # noqa: PLC0415
+
     return run_read(
         options=ReadOptions(
             assume_yes=args.assume_yes,
@@ -46,7 +86,7 @@ def _handle_capture(args: argparse.Namespace) -> int:
     # Imported here so `starling read` never loads tkinter.
     from starling.capture import run_capture  # noqa: PLC0415
 
-    return run_capture()
+    return run_capture(on_ready=_check_for_updates)
 
 
 def _handle_voices(args: argparse.Namespace) -> int:
@@ -56,6 +96,8 @@ def _handle_voices(args: argparse.Namespace) -> int:
 
 
 def _handle_usage(args: argparse.Namespace) -> int:
+    from starling.reader import run_usage  # noqa: PLC0415
+
     return run_usage()
 
 
@@ -72,9 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"starling {__version__}",
+        action=_VersionAction,
     )
+    # Capture runs the update check itself once its window is showing, so the check's
+    # version lookup and background `requests` import do not delay the window.
+    parser.set_defaults(defer_update_check=False)
     subparsers = parser.add_subparsers(
         dest="command",
         metavar="{read,capture,voices,usage}",
@@ -122,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
         "capture",
         help="Open the clipboard-capture window to save articles into the input directory.",
     )
-    capture_parser.set_defaults(handler=_handle_capture)
+    capture_parser.set_defaults(handler=_handle_capture, defer_update_check=True)
 
     voices_parser = subparsers.add_parser(
         "voices",
@@ -168,10 +212,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(apply_default_command(raw))
 
     # After parse_args on purpose: --help and --version exit inside parse_args, so those
-    # stay pure. Imported lazily to match the capture/voices handlers.
-    from starling.update_check import maybe_notify_update  # noqa: PLC0415
-
-    maybe_notify_update()
+    # stay pure.
+    if not args.defer_update_check:
+        _check_for_updates()
 
     try:
         return args.handler(args)

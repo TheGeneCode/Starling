@@ -24,6 +24,29 @@ def test_package_imports() -> None:
     assert len(starling.__version__) > 0
 
 
+def test_getattr_unknown_attribute_raises_attribute_error() -> None:
+    """Test that starling.__getattr__ only special-cases __version__, per PEP 562."""
+    assert not hasattr(starling, "nope")
+    with pytest.raises(AttributeError):
+        _ = starling.nope
+
+
+def test_getattr_version_resolved_lazily_and_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that __version__ is resolved via importlib.metadata once, then cached."""
+    monkeypatch.delattr(starling, "__version__", raising=False)
+    calls: list[str] = []
+
+    def fake_version(name: str) -> str:
+        calls.append(name)
+        return "9.9.9-test"
+
+    monkeypatch.setattr("importlib.metadata.version", fake_version)
+
+    assert starling.__version__ == "9.9.9-test"
+    assert starling.__version__ == "9.9.9-test"
+    assert calls == ["starling"]
+
+
 def test_version_matches_installed_metadata() -> None:
     """Test that package version matches installed metadata."""
     try:

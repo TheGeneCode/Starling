@@ -38,6 +38,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 POLL_INTERVAL_MS: Final = 100
+# How long after entering the mainloop `on_ready` runs: long enough for the window to be
+# drawn, so startup work handed to it does not delay the first paint.
+ON_READY_DELAY_MS: Final = 1000
 WINDOW_GEOMETRY: Final = "500x90"
 WINDOW_TITLE: Final = "Starling Capture"
 ENTRY_MAX_LENGTH: Final = 92
@@ -172,12 +175,14 @@ class CaptureWindow:
         root: tk.Tk | None = None,
         poll_interval_ms: int = POLL_INTERVAL_MS,
         on_close: Callable[[], None] = run_article_reader,
+        on_ready: Callable[[], None] | None = None,
         clipboard_read: Callable[[], str] = pyperclip.paste,
     ) -> None:
         self.config = config
         self.output_dir = config.input_dir
         self.poll_interval_ms = poll_interval_ms
         self.on_close = on_close
+        self.on_ready = on_ready
         self.clipboard_read = clipboard_read
         # Seed from the clipboard at launch so its existing contents aren't captured.
         self.previous_clipboard = clipboard_read()
@@ -202,8 +207,10 @@ class CaptureWindow:
         self.entry2.pack(anchor="w", fill=tk.X)
 
     def run(self) -> None:
-        """Start polling and block until the window is closed."""
+        """Start polling, schedule `on_ready`, and block until the window is closed."""
         self.check_clipboard()
+        if self.on_ready is not None:
+            self.root.after(ON_READY_DELAY_MS, self.on_ready)
         self.root.mainloop()
 
     def check_clipboard(self) -> None:
@@ -256,8 +263,17 @@ class CaptureWindow:
         self.root.destroy()
 
 
-def run_capture(config: StarlingConfig | None = None) -> int:
-    """Open the capture window and block until it closes. Returns a process exit code."""
+def run_capture(
+    config: StarlingConfig | None = None,
+    *,
+    on_ready: Callable[[], None] | None = None,
+) -> int:
+    """
+    Open the capture window and block until it closes. Returns a process exit code.
+
+    `on_ready`, if given, runs once shortly after the window is shown -- the place for
+    startup work (the CLI's update check) that should not delay the first paint.
+    """
     if tk is None:
         print(
             "Error: could not open the capture window. Starling's capture UI needs "
@@ -274,6 +290,7 @@ def run_capture(config: StarlingConfig | None = None) -> int:
         window = CaptureWindow(
             config,
             on_close=partial(run_article_reader, confirm=config.capture_confirm),
+            on_ready=on_ready,
         )
     except tk.TclError as exc:
         print(

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `starling capture` opens its window much faster: it no longer imports the Google
+  Text-to-Speech stack at startup, and the weekly update check now runs a second after the
+  window appears instead of before it.
+
 ## [0.2.0] - 2026-09-03
 
 ### Added

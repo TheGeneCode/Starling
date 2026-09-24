@@ -265,6 +265,36 @@ def test_close_launches_reader_then_destroys_root(tmp_config: StarlingConfig) ->
         assert not root.winfo_exists()
 
 
+@pytest.mark.parametrize("with_on_ready", [True, False], ids=["on_ready", "no_on_ready"])
+def test_run_schedules_on_ready_after_the_window_is_up(
+    monkeypatch: pytest.MonkeyPatch,
+    tk_root: tk.Tk,
+    tmp_config: StarlingConfig,
+    *,
+    with_on_ready: bool,
+) -> None:
+    """Test that run() schedules on_ready on the event loop (not inline), and only if given."""
+    on_ready_calls: list[None] = []
+    window = CaptureWindow(
+        tmp_config,
+        root=tk_root,
+        on_ready=(lambda: on_ready_calls.append(None)) if with_on_ready else None,
+        clipboard_read=lambda: "",
+    )
+    scheduled: list[tuple[int, object]] = []
+    monkeypatch.setattr(tk_root, "after", lambda ms, func: scheduled.append((ms, func)))
+    monkeypatch.setattr(tk_root, "mainloop", lambda: None)
+
+    window.run()
+
+    assert on_ready_calls == []
+    on_ready_entries = [(ms, f) for ms, f in scheduled if f is window.on_ready]
+    if with_on_ready:
+        assert on_ready_entries == [(starling.capture.ON_READY_DELAY_MS, window.on_ready)]
+    else:
+        assert [f for _ms, f in scheduled] == [window.check_clipboard]
+
+
 # ---------------------------------------------------------------------------
 # run_capture
 # ---------------------------------------------------------------------------
@@ -334,6 +364,30 @@ def test_run_capture_returns_zero_and_runs_window_on_success(
     assert result == 0
     assert calls["config"] is tmp_config
     assert calls["ran"] is True
+    assert calls["kwargs"]["on_ready"] is None  # type: ignore[index]
+
+
+def test_run_capture_forwards_given_on_ready_to_capture_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_config: StarlingConfig
+) -> None:
+    """Test that a caller-supplied on_ready reaches CaptureWindow unchanged, not dropped."""
+    calls: dict[str, object] = {}
+
+    class FakeWindow:
+        def __init__(self, config: StarlingConfig, **kwargs: object) -> None:
+            calls["kwargs"] = kwargs
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr(starling.capture, "CaptureWindow", FakeWindow)
+
+    def _on_ready() -> None:
+        pass
+
+    starling.capture.run_capture(tmp_config, on_ready=_on_ready)
+
+    assert calls["kwargs"]["on_ready"] is _on_ready  # type: ignore[index]
 
 
 def test_run_capture_lets_unexpected_exception_propagate(

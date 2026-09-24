@@ -237,7 +237,7 @@ def test_main_bare_invocation_dispatches_to_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorder = _Recorder(return_value=42)
-    monkeypatch.setattr(starling.cli, "run_read", recorder)
+    monkeypatch.setattr("starling.reader.run_read", recorder)
 
     result = main([])
 
@@ -251,7 +251,7 @@ def test_main_read_passes_options_through(
     tmp_path: Path,
 ) -> None:
     recorder = _Recorder()
-    monkeypatch.setattr(starling.cli, "run_read", recorder)
+    monkeypatch.setattr("starling.reader.run_read", recorder)
 
     main(["read", "--yes", "--dry-run", "--input-dir", str(tmp_path)])
 
@@ -265,7 +265,7 @@ def test_main_read_confirm_flag_sets_read_option(
 ) -> None:
     """Test that --confirm flag is passed to ReadOptions."""
     recorder = _Recorder()
-    monkeypatch.setattr(starling.cli, "run_read", recorder)
+    monkeypatch.setattr("starling.reader.run_read", recorder)
 
     main(["read", "--confirm"])
 
@@ -279,7 +279,7 @@ def test_main_bare_confirm_flag_dispatches_same_as_read_confirm(
 ) -> None:
     """Test that `starling --confirm` (implicit read) matches `starling read --confirm`."""
     recorder = _Recorder()
-    monkeypatch.setattr(starling.cli, "run_read", recorder)
+    monkeypatch.setattr("starling.reader.run_read", recorder)
 
     main(["--confirm"])
 
@@ -291,6 +291,45 @@ def test_main_capture_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("starling.capture.run_capture", recorder)
 
     assert main(["capture"]) == 7
+    assert len(recorder.calls) == 1
+
+
+def test_main_capture_defers_update_check_to_on_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capture hands the update check to its window instead of running it before Tk starts."""
+    update_recorder = _Recorder()
+    monkeypatch.setattr(starling.update_check, "maybe_notify_update", update_recorder)
+    capture_recorder = _Recorder()
+    monkeypatch.setattr("starling.capture.run_capture", capture_recorder)
+
+    main(["capture"])
+
+    assert update_recorder.calls == []
+    on_ready = capture_recorder.calls[0][1]["on_ready"]
+    on_ready()
+    assert len(update_recorder.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("argv", "target"),
+    [
+        (["voices"], "starling.voices.run_voices"),
+        (["usage"], "starling.reader.run_usage"),
+    ],
+)
+def test_main_voices_and_usage_check_for_updates_before_dispatch(
+    argv: list[str],
+    target: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-read, non-capture subcommands still run the update check exactly once."""
+    recorder = _Recorder()
+    monkeypatch.setattr(starling.update_check, "maybe_notify_update", recorder)
+    monkeypatch.setattr(target, lambda *_args, **_kwargs: 0)
+
+    main(argv)
+
     assert len(recorder.calls) == 1
 
 
@@ -307,7 +346,7 @@ def test_main_voices_dispatches_with_language_code(
 
 def test_main_usage_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = _Recorder(return_value=3)
-    monkeypatch.setattr(starling.cli, "run_usage", recorder)
+    monkeypatch.setattr("starling.reader.run_usage", recorder)
 
     assert main(["usage"]) == 3
     assert len(recorder.calls) == 1
@@ -315,7 +354,7 @@ def test_main_usage_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_main_propagates_nonzero_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = _Recorder(return_value=1)
-    monkeypatch.setattr(starling.cli, "run_read", recorder)
+    monkeypatch.setattr("starling.reader.run_read", recorder)
 
     assert main([]) == 1
 
@@ -327,7 +366,7 @@ def test_main_keyboard_interrupt_returns_130(
     def _raise(**_kwargs: Any) -> int:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(starling.cli, "run_read", _raise)
+    monkeypatch.setattr("starling.reader.run_read", _raise)
 
     result = main([])
 
@@ -346,7 +385,7 @@ def test_main_none_argv_reads_sys_argv(
 ) -> None:
     """`main()` with no argv falls back to sys.argv[1:], not an empty list."""
     recorder = _Recorder()
-    monkeypatch.setattr(starling.cli, "run_read", recorder)
+    monkeypatch.setattr("starling.reader.run_read", recorder)
     monkeypatch.setattr(sys, "argv", ["starling", "--dry-run"])
 
     main()
@@ -392,6 +431,18 @@ def test_main_version_prints_package_version(
     assert capsys.readouterr().out.strip() == f"starling {starling.__version__}"
 
 
+def test_main_help_lists_version_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """_VersionAction must still supply --help's own help text, not just handle --version."""
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "--version" in out
+    assert "version number" in out
+
+
 def test_main_help_exits_zero_and_lists_all_subcommands(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -419,6 +470,32 @@ def test_read_does_not_import_tkinter() -> None:
         timeout=30,
     )
     assert result.returncode == 0
+
+
+def test_capture_does_not_import_reader_or_version_metadata() -> None:
+    """
+    `starling capture` must not load the Google TTS stack or importlib.metadata.
+
+    Together they were ~0.8 s of the capture window's startup (docs/BACKLOG.md #9). A
+    subprocess, because this test process has already imported starling.reader.
+    """
+    code = (
+        "import sys, starling.capture, starling.cli\n"
+        "starling.capture.run_capture = lambda **_kwargs: 0\n"
+        "starling.cli.main(['capture'])\n"
+        "heavy = ('starling.reader', 'google.cloud.texttospeech', 'requests', "
+        "'importlib.metadata')\n"
+        "print(','.join(m for m in heavy if m in sys.modules))\n"
+    )
+    result = subprocess.run(  # noqa: S603 - fixed argv built from literals above
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
 
 
 def test_console_script_is_declared_in_pyproject() -> None:
@@ -478,7 +555,7 @@ def test_main_checks_for_updates_before_dispatch(
 ) -> None:
     recorder = _Recorder()
     monkeypatch.setattr(starling.update_check, "maybe_notify_update", recorder)
-    monkeypatch.setattr(starling.cli, "run_read", lambda **_kwargs: 0)
+    monkeypatch.setattr("starling.reader.run_read", lambda **_kwargs: 0)
 
     main(["read", "--dry-run"])
 
