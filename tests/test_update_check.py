@@ -201,12 +201,24 @@ class TestStateFile:
         monkeypatch: pytest.MonkeyPatch,
         state_file: Path,
     ) -> None:
+        """
+        A failure while writing the temp file's contents is swallowed, not just a replace failure.
+
+        See ``test_write_state_replace_failure_leaves_no_temp_file`` for that other branch.
+        Patches ``os.fdopen`` -- not ``Path.write_text`` -- because
+        ``atomic_write_text`` writes through a file object obtained from
+        ``os.fdopen``, never through ``Path.write_text``; patching the latter no
+        longer intercepts anything on this path and would let the write silently
+        succeed instead of exercising the swallowed-failure branch.
+        """
+
         def _raise(*_args: object, **_kwargs: object) -> None:
             raise PermissionError
 
-        monkeypatch.setattr(Path, "write_text", _raise)
+        monkeypatch.setattr(uc.os, "fdopen", _raise)
 
         assert uc.write_state(state_file, {"last_checked": "2026-01-01"}) is None
+        assert not state_file.exists()
 
     def test_write_state_leaves_no_temp_file(self, state_file: Path) -> None:
         uc.write_state(state_file, {"last_checked": "2026-01-01"})
@@ -829,26 +841,21 @@ class TestStateFileAdditional:
         state_file: Path,
     ) -> None:
         """
-        CONFIRMED bug: same-process concurrency can silently lose writes.
+        Historical bug, now fixed by the ``atomic_write_text`` migration -- kept as a guard.
 
-        Twenty threads race write_state on the shared, PID-only temp path
-        (``os.getpid()`` carries no per-thread component). On Windows this makes
-        concurrent ``os.replace`` calls collide with ``WinError 32``
-        (ERROR_SHARING_VIOLATION) / ``WinError 5`` (ERROR_ACCESS_DENIED), which
-        write_state's bare ``except OSError`` swallows silently. In isolation this
-        reproducibly loses *every* write on this machine (read_state comes back
-        ``{}``, no state file at all); inside the full suite's thread pressure a
-        single writer has been observed to survive instead -- the exact extent of
-        loss is timing-dependent, so this asserts the invariants that DO hold under
-        either outcome: write_state never raises, and read_state never comes back
-        torn or corrupted, only ever empty or one complete write. The deterministic
-        test below pins the actual loss mechanism without relying on OS scheduling.
-        Currently unreachable in production (today's only two write_state call sites
-        -- the main-thread stamp and the later daemon-thread refresh -- are
-        temporally separated, not concurrent), but a real latent gap if a future
-        change adds a second concurrent write path; see the handoff's own note about
-        a still-finishing daemon thread from a fast invocation racing the same
-        process's next write.
+        Twenty threads race write_state. Under the old implementation the temp path was
+        PID-only (``os.getpid()`` carries no per-thread component), so concurrent
+        ``os.replace`` calls could collide with ``WinError 32``/``WinError 5`` on Windows,
+        which write_state's bare ``except OSError`` swallowed silently -- in isolation this
+        reproducibly lost *every* write. ``genekit.atomic_write_text`` gives each call its own
+        ``tempfile.mkstemp`` temp file, so that collision path is gone; this test now mainly
+        guards against a regression back to a shared temp name. It asserts the invariants that
+        must hold regardless: write_state never raises, and read_state never comes back torn
+        or corrupted, only ever empty or one complete write. The deterministic test below pins
+        the (now historical) loss mechanism without relying on OS scheduling. Currently
+        unreachable in production either way (today's only two write_state call sites -- the
+        main-thread stamp and the later daemon-thread refresh -- are temporally separated, not
+        concurrent).
         """
         errors: list[BaseException] = []
 
@@ -872,22 +879,24 @@ class TestStateFileAdditional:
         state = uc.read_state(state_file)
         assert state in [{}, *({"i": str(i)} for i in range(20))]
 
-    def test_write_state_same_process_concurrent_writers_can_silently_lose_a_write(
+    def test_write_state_same_process_concurrent_writers_no_longer_share_a_temp_path(
         self,
         monkeypatch: pytest.MonkeyPatch,
         state_file: Path,
     ) -> None:
         """
-        Pins the gap the handoff flagged: same-process writers share a temp path.
+        Confirms the gap the handoff flagged is closed by the ``atomic_write_text`` migration.
 
-        The temp file is suffixed with ``os.getpid()``, not a thread id, so two
-        write_state calls racing in the SAME process share one temp path. Writer "a"
-        is paused (via a monkeypatched os.replace) right after writing its own temp
-        file but before renaming it; writer "b" then runs to completion, renaming the
-        (now b-owned) shared temp path away. When "a" resumes, its own rename target
-        no longer exists -- FileNotFoundError, silently swallowed by write_state's
-        `except OSError` -- so "a"'s entire update vanishes without a trace and
-        without raising.
+        This used to pin a real bug: the old temp file was suffixed with ``os.getpid()``,
+        not a thread id, so two ``write_state`` calls racing in the SAME process shared one
+        temp path, and whichever writer resumed second found its own rename target already
+        gone -- a silently swallowed, silently lost write. ``genekit.atomic_write_text`` gives
+        every call its own ``tempfile.mkstemp`` temp file, so that collision can no longer
+        happen: writer "a" is paused (via a monkeypatched ``os.replace``, which patches the
+        shared ``os`` module and so is honored inside genekit's call too) right after writing
+        its own temp file but before renaming it; writer "b" then runs to completion against
+        its own, different temp file. When "a" resumes, its rename target is untouched, so its
+        write lands too -- last-writer-wins on the shared destination, not data loss.
         """
         a_wrote = threading.Event()
         b_done = threading.Event()
@@ -917,7 +926,9 @@ class TestStateFileAdditional:
         thread_a.join(timeout=5)
         thread_b.join(timeout=5)
 
-        assert uc.read_state(state_file)["who"] == "b"
+        # "a" was paused until "b" finished, so "a" replaces last -- and, unlike the old
+        # shared-temp-path bug, its own write still lands intact instead of vanishing.
+        assert uc.read_state(state_file)["who"] == "a"
 
 
 # ---------------------------------------------------------------------------

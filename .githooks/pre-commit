@@ -1,0 +1,5 @@
+#!/bin/sh
+# Mirrors the CI lint job (.github/workflows/ci.yml).
+set -e
+uv run ruff check
+uv run ruff format --check

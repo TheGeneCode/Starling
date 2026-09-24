@@ -1,7 +1,7 @@
 # Backlog — known defects
 
-Things that are **wrong**, not things that are missing. New capability belongs in
-`plans/FUTURE-IDEAS.md`.
+Things that are **wrong**, not things that are missing. New capability lives in
+`docs/FUTURE-IDEAS.md`; engineering debt/leverage in `docs/ENGINEERING-IMPROVEMENTS.md`.
 
 Ordered by severity, and severity here means *what it costs a read-aloud run or a release*, not
 what it costs to fix. Every entry names the mechanism and the file, so the fix does not start
@@ -72,6 +72,8 @@ cross-repo copy of code reformat on arrival. Pick 100 to match.
 too". `rg -i kittentts src tests README.md` finds nothing on 2026-09-18, so this looks done;
 check `uv.lock`, `pyproject.toml` and `CHANGELOG.md` for a removal entry, then close.
 *(Moved from `dev/TTS/plans/TODO.txt`.)*
+
+### 9. launching from my shortcut takes a bit longer than I'd expect
 
 ## Closed
 

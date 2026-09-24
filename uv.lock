@@ -176,8 +176,8 @@ sdist = { url = "https://files.pythonhosted.org/packages/a2/55/8f8cab2afd404cf57
 
 [[package]]
 name = "genekit"
-version = "0.1.0"
-source = { git = "https://github.com/TheGeneCode/genekit?subdirectory=python&rev=py-v0.1.0#c82246c4b5f327338751a47e7909c5b4316794cf" }
+version = "0.4.0"
+source = { git = "https://github.com/TheGeneCode/genekit?subdirectory=python&rev=py-v0.4.0#691e30d6e7ba89dae7ebf2ad20150a23cdf592e0" }
 
 [[package]]
 name = "google-api-core"
@@ -593,7 +593,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "genekit", git = "https://github.com/TheGeneCode/genekit?subdirectory=python&rev=py-v0.1.0" },
+    { name = "genekit", git = "https://github.com/TheGeneCode/genekit?subdirectory=python&rev=py-v0.4.0" },
     { name = "google-cloud-texttospeech", specifier = ">=2.33.0" },
     { name = "num2words", specifier = ">=0.5.13" },
     { name = "pyperclip", specifier = ">=1.9.0" },

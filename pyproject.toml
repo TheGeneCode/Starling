@@ -41,7 +41,7 @@ dependencies = [
     # and are ignored for transitive and direct-URL requirements, so a plain
     # `Requires-Dist: genekit` in the wheel would be looked up on PyPI, where genekit
     # does not exist. The URL must live here to survive into published metadata.
-    "genekit @ git+https://github.com/TheGeneCode/genekit@py-v0.1.0#subdirectory=python",
+    "genekit @ git+https://github.com/TheGeneCode/genekit@py-v0.4.0#subdirectory=python",
 ]
 
 [project.urls]
@@ -88,6 +88,8 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config"]
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["src/starling"]

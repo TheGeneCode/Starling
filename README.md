@@ -530,6 +530,7 @@ git clone https://github.com/TheGeneCode/Starling
 cd Starling
 uv sync --group dev
 cp .env.example .env
+git config core.hooksPath .githooks
 uv run starling --version
 ```
 

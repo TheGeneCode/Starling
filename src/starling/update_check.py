@@ -14,7 +14,6 @@ byte-for-byte the same output as a user who never had this feature.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import re
@@ -25,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from dotenv import load_dotenv
+from genekit.atomic_write import atomic_write_text
 
 from starling import __version__
 
@@ -149,19 +149,10 @@ def write_state(path: Path, state: dict[str, str]) -> None:
     """
     Write the state file atomically. Any failure is swallowed.
 
-    The temp file carries the PID because two Starling invocations can race here, and
-    ``os.replace`` is atomic on both POSIX and Windows -- a reader therefore never sees a
-    half-written file, which is what keeps ``read_state`` from having to distinguish
-    "corrupt" from "being written".
+    Delegates to ``genekit.atomic_write.atomic_write_text``: a unique-per-call temp file in
+    the same directory, replaced atomically, cleaned up and swallowed on any OSError.
     """
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps(state), encoding="utf-8")
-        os.replace(tmp, path)  # noqa: PTH105
-    except OSError:
-        with contextlib.suppress(OSError):
-            tmp.unlink(missing_ok=True)
+    atomic_write_text(path, json.dumps(state), mkdir=True, on_error="ignore")
 
 
 def is_stale(last_checked: str | None, *, now: datetime | None = None) -> bool:
