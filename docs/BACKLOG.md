@@ -34,6 +34,30 @@ copies of MeadowLark's and have diverged in both directions. Each release-proces
 in one repo. `dev/backlog.txt` item 14 covers the shared solution. Which copy is newer is
 recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
 
+### 7. it reads out "quote quote quote quote quote quote" sometimes (can't be fixed by my code, seems to be a google )
+https://coloradosun.com/2026/10/03/manny-rutinel-website-changes-8th-congressional-district/
+that's an example where it did it a couple times, reading out 4 to 6 quotes. it's confusing it doesn't just read every quote mark
+
+Diagnosis so far (2026-10-06): the archived input has no repeated quote characters, only
+paired `“ ”`. Several sentences carry 4 or 6 of them, matching "4 to 6 quotes", e.g. three
+short quoted phrases in one sentence. Both synthesis chunks are quote-balanced, so a chunk
+boundary does not orphan a quote. Starling sends the text unchanged, which makes this
+Chirp 3 HD model output, and it is not deterministic. Normal "quote" reading is wanted;
+stripping or announcing every quote was rejected. Next step needs the failing audio: keep the
+`.wav` and note roughly where it happens, then test against it (smaller chunks, ASCII quotes).
+
+### 8. Trillion translated to "thousand billion"
+https://coloradosun.com/2026/10/03/manny-rutinel-website-changes-8th-congressional-district/ is the article it happened in
+I would like Trillion to be a standard word, it doesn't need translating. Quadrillion, Quintillion, Sextillion, Septillion, and Octillion, Nonillion, Dectillion are words I know the meaning of as well. Anything bigger than that can be translated into a smaller version (i.e. a thousand Sextillion = Septillion equivalent)
+
+Fixed 2026-10-06 (uncommitted). `scale_currency` in `src/starling/reader.py` only labelled
+output "million" or "billion", so "$3 trillion" became "3000 billion dollars". It now picks
+the largest word from million to decillion and keeps amounts past that in decillions. Move to
+Closed once committed.
+
+### 9. let the user know about errors
+When an article fails to output a .wav, I often don't know. I only notice that the article tries is in the next batch again eventually. Errors like that should be output to the terminal and the terminal held open if there are any errors to display.
+
 ## Closed
 
 ### 9. `starling capture` imports the whole Google TTS stack before opening its window

@@ -19,6 +19,7 @@ import time
 import wave
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal, localcontext
 from pathlib import Path
 from threading import Event, Thread
 from typing import TYPE_CHECKING, Final
@@ -56,6 +57,25 @@ USAGE_LOG_PATH = CONFIG.usage_log_path
 ERROR_LOG_PATH = CONFIG.error_log_path
 
 DEFAULT_SAMPLE_RATE_HERTZ: Final = 24000
+
+# Short-scale words a listener knows, smallest first. Currency is re-expressed in the
+# largest one that fits, so the voice never says "thousand billion".
+SCALE_EXPONENTS: Final = {
+    "million": 6,
+    "billion": 9,
+    "trillion": 12,
+    "quadrillion": 15,
+    "quintillion": 18,
+    "sextillion": 21,
+    "septillion": 24,
+    "octillion": 27,
+    "nonillion": 30,
+    "decillion": 33,
+}
+SCALED_CURRENCY_RE: Final = re.compile(
+    r"\$(\d+(?:,\d{3})*(?:\.\d+)?)\s+(" + "|".join(SCALE_EXPONENTS) + r")\b",
+    flags=re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,53 +122,33 @@ def remove_citations(text: str) -> str:
     return re.sub(footnotes_regex, "", text)
 
 
+def scale_currency(match: re.Match[str]) -> str:
+    """
+    Re-express "$<amount> <scale word>" with the largest scale word that fits.
+
+    "$1,300 million" -> "1.3 billion dollars"; "$3 trillion" -> "3 trillion dollars".
+    Amounts past the largest word stay in it ("1000 decillion dollars"). Decimal, not
+    float, so no amount overflows to "inf" or picks up binary rounding noise.
+    """
+    digits = match.group(1).replace(",", "")
+    scales = [("", 0), *SCALE_EXPONENTS.items()]
+    # Room for every digit, the widest shift and the tenths place: only quantize rounds.
+    with localcontext(prec=len(digits) + max(SCALE_EXPONENTS.values()) + 1):
+        total = Decimal(digits).scaleb(SCALE_EXPONENTS[match.group(2).lower()])
+        index = max(i for i, (_, exp) in enumerate(scales) if i == 0 or total >= 10**exp)
+        rounded = total.scaleb(-scales[index][1]).quantize(Decimal("0.1"))
+        # Rounding can carry 999.96 billion to 1000.0; say "1 trillion" instead.
+        if 0 < index < len(scales) - 1 and rounded >= 1000:
+            index += 1
+            rounded = total.scaleb(-scales[index][1]).quantize(Decimal("0.1"))
+    val_fmt = f"{rounded:f}".removesuffix(".0")
+    return " ".join(part for part in (val_fmt, scales[index][0], "dollars") if part)
+
+
 def convert_numbers_to_words(text: str) -> str:
     """Convert numbers to words in the text, handling currency scaling and formatting."""
-
-    # 1. Handle "X million/billion" currency scaling
-    # Pattern: $1,300 million -> 1.3 billion dollars
-    def scale_currency(match: re.Match[str]) -> str:
-        val_str = match.group(1).replace(",", "")
-        unit = match.group(2).lower()
-        val = float(val_str)
-
-        multipliers = {
-            "million": 1e6,
-            "billion": 1e9,
-            "trillion": 1e12,
-        }
-
-        if unit in multipliers:
-            total_val = val * multipliers[unit]
-
-            # Determine new unit
-            if total_val >= 1e9:
-                new_val = total_val / 1e9
-                new_unit = "billion"
-            elif total_val >= 1e6:
-                new_val = total_val / 1e6
-                new_unit = "million"
-            else:
-                new_val = total_val
-                new_unit = ""  # Should be rare for million+ inputs
-
-            # Format: 1.3 billion dollars
-            if new_val.is_integer():
-                val_fmt = f"{int(new_val)}"
-            else:
-                val_fmt = f"{new_val:.1f}".rstrip("0").rstrip(".")
-
-            return f"{val_fmt} {new_unit} dollars".strip()
-
-        return match.group(0)
-
-    # Regex for $X million/billion
-    text = re.sub(
-        r"\$(\d+(?:,\d{3})*(?:\.\d+)?)\s+(million|billion|trillion)",
-        scale_currency,
-        text,
-        flags=re.IGNORECASE,
-    )
+    # 1. Currency with a scale word: $1,300 million -> 1.3 billion dollars
+    text = SCALED_CURRENCY_RE.sub(scale_currency, text)
 
     # 2. Handle simple currency ($1,234.56 -> one thousand... dollars and fifty-six cents)
     def currency_to_words(match: re.Match[str]) -> str:

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Dollar amounts with a scale word are read with the largest word that fits: "$3 trillion"
+  is now "3 trillion dollars", not "3000 billion dollars". Quadrillion through decillion are
+  recognized too; larger amounts stay in decillions ("1000 decillion dollars").
+- "$999,999 million" now reads "1 trillion dollars" instead of rounding to "1000 billion",
+  "$0.5 million" no longer leaves a double space, and very large amounts no longer read "inf".
+
 ## [0.2.1] - 2026-09-24
 
 ### Changed

@@ -123,33 +123,108 @@ def test_convert_numbers_to_words_million_scaled_just_under_billion_threshold() 
     assert result == "500 billion dollars"
 
 
-def test_convert_numbers_to_words_sub_one_million_value_loses_unit_label() -> None:
-    """
-    Document a second boundary defect: a "million" value scaled below 1e6 drops its unit.
-
-    ``scale_currency``'s final ``else`` branch (comment: "Should be rare for million+
-    inputs") sets ``new_unit = ""`` when the scaled total is under 1e6. That branch is
-    reachable whenever the numeric value in front of "million" is itself less than 1
-    (e.g. "$0.5 million" scales to 500,000, which is under 1e6). The result drops the
-    unit word entirely and leaves a double space where it used to sit, since
-    ``f"{val_fmt} {new_unit} dollars".strip()`` only trims the ends, not the interior.
-    """
-    result = reader.convert_numbers_to_words("$0.5 million")
-    assert result == "500000  dollars"
+def test_convert_numbers_to_words_sub_one_million_value_has_no_scale_word() -> None:
+    """A "million" amount scaled below 1e6 drops the scale word without leaving a double space."""
+    assert reader.convert_numbers_to_words("$0.5 million") == "500000 dollars"
 
 
-def test_convert_numbers_to_words_beyond_billion_mislabels_as_billion() -> None:
-    """
-    Document a boundary defect: scaled values >= 1e12 are still labeled 'billion'.
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        pytest.param("$3 trillion", "3 trillion dollars", id="trillion_stays_trillion"),
+        pytest.param("$1,300,000 million", "1.3 trillion dollars", id="million_up_to_trillion"),
+        pytest.param(
+            "$999,999 million",
+            "1 trillion dollars",
+            id="rounding_carry_to_1000_moves_up_a_word",
+        ),
+        pytest.param("$999.94 billion", "999.9 billion dollars", id="just_below_carry_stays"),
+        pytest.param("$2.5 quadrillion", "2.5 quadrillion dollars", id="quadrillion"),
+        pytest.param("$1,000 quadrillion", "1 quintillion dollars", id="up_to_quintillion"),
+        pytest.param("$7 sextillion", "7 sextillion dollars", id="sextillion"),
+        pytest.param("$1,000 sextillion", "1 septillion dollars", id="up_to_septillion"),
+        pytest.param("$4 octillion", "4 octillion dollars", id="octillion"),
+        pytest.param("$1,000 octillion", "1 nonillion dollars", id="up_to_nonillion"),
+        pytest.param("$1,000 nonillion", "1 decillion dollars", id="up_to_decillion"),
+        pytest.param(
+            "$1,000 decillion",
+            "1000 decillion dollars",
+            id="past_largest_word_stays_in_decillion",
+        ),
+    ],
+)
+def test_convert_numbers_to_words_uses_largest_fitting_scale_word(
+    text: str,
+    expected: str,
+) -> None:
+    """Currency is re-expressed in the largest scale word that fits, never "thousand billion"."""
+    assert reader.convert_numbers_to_words(text) == expected
 
-    ``scale_currency`` only ever re-labels the output as 'million' or
-    'billion' — there's no branch for 'trillion' even though 'trillion' is
-    an accepted *input* unit and a large-enough 'million'/'billion' input
-    can scale past 1e12. "$1,300,000 million" is 1.3 trillion, but the
-    function emits "1300 billion dollars" instead of "1.3 trillion dollars".
-    """
-    result = reader.convert_numbers_to_words("$1,300,000 million")
-    assert result == "1300 billion dollars"
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        pytest.param("$1.25 million", "1.2 million dollars", id="tie_rounds_to_even_down"),
+        pytest.param("$1.35 million", "1.4 million dollars", id="tie_rounds_to_even_up"),
+        pytest.param("$999.95 billion", "1 trillion dollars", id="tie_carry_moves_up_a_word"),
+    ],
+)
+def test_convert_numbers_to_words_exact_tie_rounds_half_even_before_carry_check(
+    text: str,
+    expected: str,
+) -> None:
+    """An exact x.x5 tie quantizes half-even, and a tie that reaches 1000.0 still carries up."""
+    assert reader.convert_numbers_to_words(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        pytest.param(
+            "$0.0000001 decillion",
+            "100 septillion dollars",
+            id="tiny_fraction_of_top_word_drops_to_lower_word",
+        ),
+        pytest.param(
+            "$1.23456789 trillion",
+            "1.2 trillion dollars",
+            id="many_fractional_digits_round_to_tenths",
+        ),
+        pytest.param(
+            "$1." + "9" * 200 + " billion",
+            "2 billion dollars",
+            id="two_hundred_fractional_digits_do_not_raise",
+        ),
+    ],
+)
+def test_convert_numbers_to_words_long_fractional_amounts_stay_exact(
+    text: str,
+    expected: str,
+) -> None:
+    """Fractional digits never trip a Decimal precision error or float noise in the output."""
+    assert reader.convert_numbers_to_words(text) == expected
+
+
+def test_convert_numbers_to_words_multiple_scaled_amounts_each_pick_their_own_word() -> None:
+    """Every scaled amount in a sentence is rescaled independently, in any letter case."""
+    text = "Aid of $1,300 MILLION and $2 Trillion, not $0.5 million."
+    assert reader.convert_numbers_to_words(text) == (
+        "Aid of 1.3 billion dollars and 2 trillion dollars, not 500000 dollars."
+    )
+
+
+def test_convert_numbers_to_words_reported_trillion_sentence() -> None:
+    """The sentence from the reported article reads "3 trillion", not "3000 billion"."""
+    text = "increase the federal deficit by more than $3 trillion in its first decade."
+    assert reader.convert_numbers_to_words(text) == (
+        "increase the federal deficit by more than 3 trillion dollars in its first decade."
+    )
+
+
+def test_convert_numbers_to_words_scale_word_must_be_whole_word() -> None:
+    """A scale word that is only a prefix of a longer word is not a currency scale."""
+    text = "$3 millionaires"
+    assert reader.convert_numbers_to_words(text) == text
 
 
 def test_convert_numbers_to_words_malformed_value_falls_back_to_original() -> None:
@@ -201,19 +276,10 @@ def test_number_to_words_falls_back_when_num2words_raises(
     assert reader.convert_numbers_to_words("1,000 people") == "1,000 people"
 
 
-def test_convert_numbers_to_words_astronomical_scale_mislabels_as_infinity() -> None:
-    r"""
-    Document a third boundary defect: a value so large the scaling overflows to inf.
-
-    ``scale_currency`` has no upper guard on the digit group matched by ``\d+``
-    (unbounded repetition), so a large-enough literal times a ``multipliers[unit]``
-    float produces ``float("inf")``. ``float("inf").is_integer()`` is ``False`` (it
-    doesn't raise), so execution falls into the same formatting path as any other
-    non-integer scaled value and silently emits the literal word "inf" instead of
-    raising or reporting an out-of-range condition.
-    """
-    result = reader.convert_numbers_to_words("$" + "9" * 320 + " trillion")
-    assert result == "inf billion dollars"
+def test_convert_numbers_to_words_astronomical_amount_does_not_overflow_to_inf() -> None:
+    """An amount far past decillion stays a finite digit string in decillions, never "inf"."""
+    result = reader.convert_numbers_to_words("$" + "9" * 320 + " decillion")
+    assert result == "9" * 320 + " decillion dollars"
 
 
 def test_convert_numbers_to_words_unicode_digits_are_converted_without_raising() -> None:
