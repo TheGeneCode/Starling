@@ -603,3 +603,50 @@ def test_capture_confirm_rejects_boundary_garbage_values(
         config.load_config(use_dotenv=False)
 
     assert "STARLING_CAPTURE_CONFIRM" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Pronunciation guide path
+# ---------------------------------------------------------------------------
+
+
+def test_pronunciations_default_under_home_not_required(clean_env: None, fake_home: Path) -> None:
+    """Test that the guide defaults to <home>/pronunciations.toml and is optional there."""
+    cfg = config.load_config(use_dotenv=False)
+
+    assert cfg.pronunciations_path == fake_home / "Starling" / "pronunciations.toml"
+    assert cfg.pronunciations_required is False
+
+
+def test_pronunciations_env_override_is_required_and_expanded(
+    clean_env: None, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that STARLING_PRONUNCIATIONS expands ~ and makes a missing file an error."""
+    from pathlib import Path as PathClass
+
+    # Patch expanduser to use fake_home instead of the real user home.
+    def fake_expanduser(path_self: PathClass) -> PathClass:
+        parts = path_self.parts
+        if parts and parts[0] == "~":
+            return fake_home / PathClass(*parts[1:])
+        return path_self
+
+    monkeypatch.setattr(PathClass, "expanduser", fake_expanduser)
+    monkeypatch.setenv("STARLING_PRONUNCIATIONS", "~/g.toml")
+
+    cfg = config.load_config(use_dotenv=False)
+
+    assert cfg.pronunciations_path == fake_home / "g.toml"
+    assert cfg.pronunciations_required is True
+
+
+def test_pronunciations_blank_env_falls_back(
+    clean_env: None, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that a whitespace-only STARLING_PRONUNCIATIONS means the optional default."""
+    monkeypatch.setenv("STARLING_PRONUNCIATIONS", "  ")
+
+    cfg = config.load_config(use_dotenv=False)
+
+    assert cfg.pronunciations_path == fake_home / "Starling" / "pronunciations.toml"
+    assert cfg.pronunciations_required is False

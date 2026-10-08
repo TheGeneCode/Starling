@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A personal pronunciation guide: list words the voice mispronounces in `pronunciations.toml` (e.g. `SCOTUS = "Scotus"`) and `starling read` rewrites them before synthesis. Set `STARLING_PRONUNCIATIONS` to keep the file elsewhere.
 - `starling read` ends with a list of every file that failed and why, and
   `read --pause-on-error` waits for Enter before closing when anything failed. The reader
   window opened by `starling capture` uses it, so failures are no longer lost when that window

@@ -39,6 +39,7 @@ from starling.config import (
     load_config,
     require_credentials,
 )
+from starling.pronunciations import EMPTY_GUIDE, load_pronunciations
 from starling.voices import (
     UnknownVoiceError,
     fetch_voices,
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
     from starling.config import StarlingConfig
+    from starling.pronunciations import PronunciationGuide
 
 CONFIG = load_config()
 USAGE_LOG_PATH = CONFIG.usage_log_path
@@ -209,6 +211,16 @@ def convert_numbers_to_words(text: str) -> str:
         number_to_words,
         text,
     )
+
+
+def prepare_text(raw: str, guide: PronunciationGuide = EMPTY_GUIDE) -> str:
+    """
+    Turn an article's raw text into exactly what `read` synthesizes and bills.
+
+    The guide runs before number conversion so its keys match the article as written.
+    `process_file` and `plan_dry_run` both call this, so a dry run's count is the bill.
+    """
+    return convert_numbers_to_words(guide.apply(remove_citations(raw)))
 
 
 def initialize_usage_logger(usage_log_path: Path | None = None) -> logging.Logger:
@@ -501,6 +513,7 @@ def process_file(
     usage_logger: logging.Logger,
     logger: logging.Logger,
     options: ReadOptions,
+    guide: PronunciationGuide = EMPTY_GUIDE,
 ) -> FileResult:
     """
     Synthesize one article.
@@ -520,7 +533,7 @@ def process_file(
         try:
             # The read is inside the try on purpose: a locked or vanished file is a
             # per-file error, not a reason to abandon the rest of the batch.
-            text = convert_numbers_to_words(remove_citations(filepath.read_text(encoding="utf8")))
+            text = prepare_text(filepath.read_text(encoding="utf8"), guide)
             selected_voice = select_voice(config, voice_pool)
             print(f"Using voice: {selected_voice}")
             audio = synthesize_text(
@@ -565,12 +578,14 @@ def _configured_voice_names(config: StarlingConfig) -> tuple[str, ...]:
 def plan_dry_run(
     input_paths: Sequence[Path],
     config: StarlingConfig,
+    *,
+    guide: PronunciationGuide = EMPTY_GUIDE,
 ) -> list[DryRunEntry]:
     """Measure every input file the way `read` would bill it, without calling the API."""
     entries: list[DryRunEntry] = []
     for path in input_paths:
         try:
-            text = convert_numbers_to_words(remove_citations(path.read_text(encoding="utf8")))
+            text = prepare_text(path.read_text(encoding="utf8"), guide)
         except OSError as e:
             print(f"File error while processing {path}: {e!s}")
             continue
@@ -627,6 +642,44 @@ def print_dry_run(
     )
 
 
+def _load_guide_or_report(config: StarlingConfig) -> PronunciationGuide | None:
+    """Load the pronunciation guide and announce it; print the error and return None if bad."""
+    try:
+        guide = load_pronunciations(
+            config.pronunciations_path,
+            required=config.pronunciations_required,
+        )
+    except ConfigError as exc:
+        print(f"Error: {exc}")
+        return None
+    if guide:
+        entries = "entry" if len(guide) == 1 else "entries"
+        print(f"Pronunciation guide: {len(guide)} {entries}.")
+    return guide
+
+
+def _preview_and_confirm(
+    input_paths: Sequence[Path],
+    config: StarlingConfig,
+    guide: PronunciationGuide,
+    options: ReadOptions,
+) -> bool:
+    """Show the dry-run report and ask to proceed; False means the user cancelled."""
+    print_dry_run(
+        plan_dry_run(input_paths, config, guide=guide),
+        config,
+        assume_yes=options.assume_yes,
+    )
+    print()
+    if not confirm_synthesis():
+        print(
+            "Cancelled. Nothing was synthesized; your files are still in the input directory.",
+        )
+        return False
+    print()
+    return True
+
+
 def _run_read(config: StarlingConfig | None, options: ReadOptions) -> int:
     """Run the pipeline proper; `run_read` wraps it with the optional pause."""
     config = config if config is not None else load_config()
@@ -643,27 +696,22 @@ def _run_read(config: StarlingConfig | None, options: ReadOptions) -> int:
         print("No text files found.")
         return 0
 
+    # Before the dry-run branch, so a dry run validates the guide and a bad guide
+    # fails before any credential check or API call.
+    guide = _load_guide_or_report(config)
+    if guide is None:
+        return 1
+
     if options.dry_run:
         print_dry_run(
-            plan_dry_run(input_paths, config),
+            plan_dry_run(input_paths, config, guide=guide),
             config,
             assume_yes=options.assume_yes,
         )
         return 0
 
-    if options.confirm:
-        print_dry_run(
-            plan_dry_run(input_paths, config),
-            config,
-            assume_yes=options.assume_yes,
-        )
-        print()
-        if not confirm_synthesis():
-            print(
-                "Cancelled. Nothing was synthesized; your files are still in the input directory.",
-            )
-            return 0
-        print()
+    if options.confirm and not _preview_and_confirm(input_paths, config, guide, options):
+        return 0
 
     try:
         require_credentials(config)
@@ -697,6 +745,7 @@ def _run_read(config: StarlingConfig | None, options: ReadOptions) -> int:
             usage_logger=usage_logger,
             logger=logger,
             options=options,
+            guide=guide,
         )
         if result.error is not None:
             failures.append(FileFailure(filepath, result.error))

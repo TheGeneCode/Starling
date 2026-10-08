@@ -17,6 +17,7 @@ README_CREDENTIALS_SECTION: Final = "Set Up Google Cloud Credentials"
 
 DEFAULT_LANGUAGE_CODE: Final = "en-US"
 DEFAULT_VOICE_NAME: Final = "en-US-Chirp3-HD-Enceladus"
+DEFAULT_PRONUNCIATIONS_FILENAME: Final = "pronunciations.toml"
 
 # The 22 Chirp 3: HD voices reader.py hardcoded before this phase (21 literals
 # plus the env-provided default that was prepended to them). Google's voice
@@ -76,6 +77,10 @@ class StarlingConfig:
     usage_log_path: Path
     error_log_path: Path
     capture_confirm: bool
+    # Where the pronunciation guide is read from.
+    pronunciations_path: Path
+    # True only when STARLING_PRONUNCIATIONS is set, which makes a missing file an error.
+    pronunciations_required: bool
 
 
 def _env(name: str) -> str | None:
@@ -211,6 +216,9 @@ def load_config(*, use_dotenv: bool = True) -> StarlingConfig:
 
     capture_confirm = _env_flag("CAPTURE_CONFIRM", default=False)
 
+    pronunciations_required = bool((_env("PRONUNCIATIONS") or "").strip())
+    pronunciations_path = _env_path("PRONUNCIATIONS", home_dir / DEFAULT_PRONUNCIATIONS_FILENAME)
+
     return StarlingConfig(
         home_dir=home_dir,
         input_dir=input_dir,
@@ -224,6 +232,8 @@ def load_config(*, use_dotenv: bool = True) -> StarlingConfig:
         usage_log_path=usage_log_path,
         error_log_path=error_log_path,
         capture_confirm=capture_confirm,
+        pronunciations_path=pronunciations_path,
+        pronunciations_required=pronunciations_required,
     )
 
 

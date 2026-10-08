@@ -23,6 +23,7 @@ Read saved articles aloud. Starling turns `.txt` articles into narrated `.wav` f
 - [What It Costs](#what-it-costs)
 - [Staying on the Free Tier](#staying-on-the-free-tier)
 - [Choosing a Voice](#choosing-a-voice)
+- [Pronunciation Guide](#pronunciation-guide)
 - [How to Use](#how-to-use)
 - [Command Reference](#command-reference)
 - [Configuration Reference](#configuration-reference)
@@ -42,6 +43,7 @@ Starling reads plain-text articles you have saved and narrates them into `.wav` 
 | Feature | What it does |
 |---|---|
 | **Clipboard-capture window** | `starling capture` watches your clipboard and saves copied article text and title straight into the input directory |
+| **Pronunciation guide** | A TOML file of words the voice gets wrong and how to spell them so it says them right (e.g. SCOTUS → Scotus) |
 | **Random voice per article** | Picks a different voice from a pool for each article by default, so a batch doesn't sound identical file after file |
 | **Free voice validation** | Every configured voice name is checked against Google's live catalog before anything is billed |
 | **`--dry-run` cost preview** | Reports exactly what a run would synthesize and bill, with no API calls and no credentials needed |
@@ -388,6 +390,39 @@ Names are matched case-insensitively and duplicates are dropped. Every configure
 
 ---
 
+## Pronunciation Guide
+
+Google's voices misread some words. "SCOTUS" is spelled out letter by letter, but people say it as one word. The pronunciation guide is a small TOML file of `written = "spoken"` pairs. `starling read` rewrites the article text with it before synthesis, so it works for every voice family and needs no SSML.
+
+Starling reads the guide from `<STARLING_HOME>/pronunciations.toml`, or from the path in `STARLING_PRONUNCIATIONS`. Example:
+
+```toml
+SCOTUS = "Scotus"
+"C++" = "C plus plus"
+NAACP = "N double-A C P"
+```
+
+How matching works:
+
+- **Case-sensitive.** A rule for `US` does not rewrite the word "us".
+- **Whole word.** `SCOTUS` matches in `SCOTUS's` and `(SCOTUS)`, but not in `SCOTUSblog`.
+- **Longest key first, applied once.** With both `NASA` and `NASA JPL` listed, `NASA JPL` wins. A replacement is never matched again by another key.
+- **Before numbers are converted**, so keys match the article as written.
+- An empty value (`"™" = ""`) removes the word.
+- A key with several words matches only the exact spacing: a single space will not match across a line break or a double space.
+
+The replacement text is what gets billed, and what `--dry-run` counts.
+
+A missing file at the default path is fine: there is simply no guide. A missing file at a path you set with `STARLING_PRONUNCIATIONS` is an error, as is a file that is not valid TOML. A bad guide stops `read` (and `--dry-run`) before any Google call.
+
+Tips for the spoken form:
+
+- Mixed case reads as a word: `Scotus`, not `SCOTUS`.
+- Hyphens or spaces split syllables: `N double-A C P`.
+- Letters separated by spaces are spelled out: `F B I`.
+
+---
+
 ## How to Use
 
 ### The capture → read workflow
@@ -473,6 +508,7 @@ Starling reads a `.env` file **from the directory you run it in**, and `.env` va
 | `STARLING_VOICE_MODE` | `random` | `random` (draw from the pool per article) or `fixed`. |
 | `STARLING_VOICE_NAME` | `en-US-Chirp3-HD-Enceladus` | The voice used when `STARLING_VOICE_MODE=fixed`. |
 | `STARLING_VOICE_POOL` | the 22 built-in `en-US-Chirp3-HD-*` voices | Comma-separated pool for `random` mode. |
+| `STARLING_PRONUNCIATIONS` | `<STARLING_HOME>/pronunciations.toml` | Your pronunciation guide. Optional at the default path; an error if set here and missing. |
 | `STARLING_CAPTURE_CONFIRM` | off | `true` makes `capture` launch the reader with `--confirm`: it prints the `--dry-run` report and asks before synthesizing. |
 | `STARLING_UPDATE_CHECK` | enabled | Set to `false`, `0`, `no` or `off` to disable the weekly release check. |
 

@@ -25,6 +25,7 @@ from google.auth.exceptions import DefaultCredentialsError
 
 from starling import reader
 from starling.config import StarlingConfig, VoiceMode, ensure_directories
+from starling.pronunciations import PronunciationGuide
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,6 +47,8 @@ def tmp_config(tmp_path: Path, fake_credentials: Path) -> StarlingConfig:
         usage_log_path=tmp_path / "logs" / "usage.log",
         error_log_path=tmp_path / "logs" / "errors.log",
         capture_confirm=False,
+        pronunciations_path=tmp_path / "pronunciations.toml",
+        pronunciations_required=False,
     )
     ensure_directories(config)
     return config
@@ -1553,3 +1556,150 @@ def test_run_usage_prints_the_same_line_read_prints(
     expected = reader.format_monthly_total(reader.get_monthly_total(tmp_config.usage_log_path))
     assert result == 0
     assert capsys.readouterr().out == expected + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Pronunciation guide wiring
+# ---------------------------------------------------------------------------
+
+SCOTUS_GUIDE = PronunciationGuide.from_mapping({"SCOTUS": "Scotus"})
+
+
+def test_prepare_text_applies_guide_before_numbers() -> None:
+    """Test that the guide runs on the article as written, and citations/numbers still convert."""
+    result = reader.prepare_text("SCOTUS (Smith, 2020) spent $1,300 million.", SCOTUS_GUIDE)
+
+    assert "Scotus" in result
+    assert "1.3 billion dollars" in result
+    assert "SCOTUS" not in result
+    assert "Smith" not in result
+
+
+def test_prepare_text_default_guide_matches_old_pipeline() -> None:
+    """Test that, with no guide, prepare_text is exactly the pre-guide pipeline."""
+    raw = "A claim (Smith, 2020) with a footnote[1]."
+
+    assert reader.prepare_text(raw) == reader.convert_numbers_to_words(reader.remove_citations(raw))
+
+
+def test_plan_dry_run_counts_guide_expansion(tmp_config: StarlingConfig) -> None:
+    """Test that the dry-run character count is the length of the guide-substituted text."""
+    guide = PronunciationGuide.from_mapping({"SCOTUS": "the Supreme Court"})
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("SCOTUS.", encoding="utf-8")
+
+    entries = reader.plan_dry_run([filepath], tmp_config, guide=guide)
+
+    assert entries[0].char_count == len(reader.prepare_text("SCOTUS.", guide))
+    assert entries[0].char_count == len("the Supreme Court.")
+
+
+def test_process_file_synthesizes_substituted_text(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    isolated_logging: None,
+) -> None:
+    """Test that every chunk sent to synthesize_speech has the guide applied."""
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"")
+    filepath = tmp_config.input_dir / "article.txt"
+    filepath.write_text("SCOTUS ruled. SCOTUS spoke.", encoding="utf-8")
+    usage_logger = reader.initialize_usage_logger(tmp_config.usage_log_path)
+
+    reader.process_file(
+        filepath,
+        client=fake_tts_client,
+        config=tmp_config,
+        voice_pool=("en-US-Chirp3-HD-Aoede",),
+        usage_logger=usage_logger,
+        logger=MagicMock(),
+        options=reader.ReadOptions(),
+        guide=SCOTUS_GUIDE,
+    )
+
+    sent = [call.kwargs["input"].text for call in fake_tts_client.synthesize_speech.call_args_list]
+    assert sent
+    assert all("Scotus" in text for text in sent)
+    assert not any("SCOTUS" in text for text in sent)
+
+
+def test_run_read_dry_run_reports_guide(
+    tmp_config: StarlingConfig,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that a dry run loads the guide, announces it, and bills the substituted text."""
+    tmp_config.pronunciations_path.write_text('SCOTUS = "Scotus"\n', encoding="utf-8")
+    (tmp_config.input_dir / "test.txt").write_text("SCOTUS ruled today.", encoding="utf-8")
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(dry_run=True))
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "Pronunciation guide: 1 entry." in out
+    assert "19 characters" in out
+
+
+def test_run_read_bad_guide_fails_before_any_api_call(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that an invalid guide returns 1 before a client is built and archives nothing."""
+    tmp_config.pronunciations_path.write_text("SCOTUS = Scotus", encoding="utf-8")
+    filepath = tmp_config.input_dir / "test.txt"
+    filepath.write_text("SCOTUS ruled today.", encoding="utf-8")
+
+    def _raise() -> None:
+        raise AssertionError("TextToSpeechClient should not be constructed")
+
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise)
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(assume_yes=True))
+
+    assert result == 1
+    assert "Error:" in capsys.readouterr().out
+    assert filepath.exists()
+    assert list(tmp_config.archive_dir.iterdir()) == []
+
+
+def test_run_read_required_missing_guide_returns_one(
+    tmp_config: StarlingConfig,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that an explicitly configured but missing guide file is an error, even on a dry run."""
+    config = replace(tmp_config, pronunciations_required=True)
+    (config.input_dir / "test.txt").write_text("Hello.", encoding="utf-8")
+
+    result = reader.run_read(config=config, options=reader.ReadOptions(dry_run=True))
+
+    assert result == 1
+    assert "does not exist" in capsys.readouterr().out
+
+
+def test_run_read_dry_run_pluralizes_guide_entries(
+    tmp_config: StarlingConfig,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that the guide announcement says "entries" for more than one entry."""
+    tmp_config.pronunciations_path.write_text('A1 = "x"\nB2 = "y"\n', encoding="utf-8")
+    (tmp_config.input_dir / "test.txt").write_text("Hello.", encoding="utf-8")
+
+    reader.run_read(config=tmp_config, options=reader.ReadOptions(dry_run=True))
+
+    assert "Pronunciation guide: 2 entries." in capsys.readouterr().out
+
+
+def test_run_read_confirm_preview_uses_guide(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that the confirm preview bills the guide-substituted text, not the raw text."""
+    tmp_config.pronunciations_path.write_text('SCOTUS = "the Supreme Court"\n', encoding="utf-8")
+    (tmp_config.input_dir / "test.txt").write_text("SCOTUS.", encoding="utf-8")
+    monkeypatch.setattr(reader, "confirm_synthesis", lambda **_kw: False)
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(confirm=True))
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert f"{len('the Supreme Court.')} characters" in out

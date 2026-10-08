@@ -100,6 +100,8 @@ def tmp_config(tmp_path: Path) -> StarlingConfig:
         usage_log_path=tmp_path / "logs" / "usage.log",
         error_log_path=tmp_path / "logs" / "errors.log",
         capture_confirm=False,
+        pronunciations_path=tmp_path / "pronunciations.toml",
+        pronunciations_required=False,
     )
     ensure_directories(config)
     return config
