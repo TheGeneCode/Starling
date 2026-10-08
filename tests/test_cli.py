@@ -274,6 +274,18 @@ def test_main_read_confirm_flag_sets_read_option(
     }
 
 
+def test_read_pause_on_error_flag_sets_read_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that --pause-on-error is passed to ReadOptions."""
+    recorder = _Recorder()
+    monkeypatch.setattr("starling.reader.run_read", recorder)
+
+    main(["read", "--pause-on-error"])
+
+    assert recorder.calls[0][1] == {"options": ReadOptions(pause_on_error=True)}
+
+
 def test_main_bare_confirm_flag_dispatches_same_as_read_confirm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

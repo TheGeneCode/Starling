@@ -253,7 +253,7 @@ def test_run_article_reader_windows_uses_new_console_flag_and_module_invocation(
 
     run_article_reader()
 
-    assert captured["argv"] == [sys.executable, "-m", "starling", "read"]
+    assert captured["argv"] == [sys.executable, "-m", "starling", "read", "--pause-on-error"]
     assert captured["kwargs"] == {
         "creationflags": subprocess.CREATE_NEW_CONSOLE,
     }
@@ -281,7 +281,7 @@ def test_run_article_reader_non_windows_uses_zero_creationflags(
 
     run_article_reader()
 
-    assert captured["argv"] == [sys.executable, "-m", "starling", "read"]
+    assert captured["argv"] == [sys.executable, "-m", "starling", "read", "--pause-on-error"]
     assert captured["kwargs"] == {"creationflags": 0}
 
 
@@ -299,7 +299,14 @@ def test_run_article_reader_appends_confirm_flag(
 
     run_article_reader(confirm=True)
 
-    assert captured["argv"] == [sys.executable, "-m", "starling", "read", "--confirm"]
+    assert captured["argv"] == [
+        sys.executable,
+        "-m",
+        "starling",
+        "read",
+        "--pause-on-error",
+        "--confirm",
+    ]
 
 
 def test_run_article_reader_omits_confirm_by_default(
@@ -316,5 +323,5 @@ def test_run_article_reader_omits_confirm_by_default(
 
     run_article_reader()
 
-    assert captured["argv"] == [sys.executable, "-m", "starling", "read"]
+    assert captured["argv"] == [sys.executable, "-m", "starling", "read", "--pause-on-error"]
     assert "--confirm" not in captured["argv"]

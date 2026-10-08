@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from google.api_core.exceptions import GoogleAPICallError
+from google.auth.exceptions import DefaultCredentialsError
 
 from starling import reader
 from starling.config import StarlingConfig, VoiceMode, ensure_directories
@@ -317,7 +318,7 @@ def test_process_file_happy_path_writes_wav_and_logs_usage(
         options=reader.ReadOptions(),
     )
 
-    assert result is True
+    assert result == reader.FileResult(written=True)
     assert (tmp_config.output_dir / "article.wav").exists()
     log_content = tmp_config.usage_log_path.read_text(encoding="utf-8")
     assert "article" in log_content
@@ -345,7 +346,7 @@ def test_process_file_synthesizes_number_converted_text(
         options=reader.ReadOptions(),
     )
 
-    assert result is True
+    assert result == reader.FileResult(written=True)
     sent_text = fake_tts_client.synthesize_speech.call_args.kwargs["input"].text
     assert "one thousand two hundred and thirty-four" in sent_text
     assert "1,234" not in sent_text
@@ -384,9 +385,11 @@ def test_process_file_number_conversion_error_is_caught_as_unexpected(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert not result.written
+    assert result.error is not None
     logger.exception.assert_called_once()
     fake_tts_client.synthesize_speech.assert_not_called()
+    assert str(tmp_config.error_log_path) in result.error
     assert str(tmp_config.error_log_path) in capsys.readouterr().out
 
 
@@ -412,7 +415,7 @@ def test_process_file_declined_overwrite_makes_no_api_call(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert result == reader.FileResult(written=False)
     fake_tts_client.synthesize_speech.assert_not_called()
     assert output_path.read_bytes() == b"original"
 
@@ -438,7 +441,9 @@ def test_process_file_permission_error_is_printed_not_logged(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert not result.written
+    assert result.error is not None
+    assert "Permission error while processing" in result.error
     assert "Permission error while processing" in capsys.readouterr().out
     logger.exception.assert_not_called()
 
@@ -464,7 +469,9 @@ def test_process_file_oserror_is_printed_not_logged(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert not result.written
+    assert result.error is not None
+    assert "OS error while processing" in result.error
     assert "OS error while processing" in capsys.readouterr().out
     logger.exception.assert_not_called()
 
@@ -490,8 +497,10 @@ def test_process_file_unexpected_error_is_logged_with_exception(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert not result.written
+    assert result.error is not None
     logger.exception.assert_called_once()
+    assert str(tmp_config.error_log_path) in result.error
     assert str(tmp_config.error_log_path) in capsys.readouterr().out
 
 
@@ -521,7 +530,9 @@ def test_process_file_unreadable_input_is_a_per_file_error(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert not result.written
+    assert result.error is not None
+    assert "Permission error while processing" in result.error
     assert "Permission error while processing" in capsys.readouterr().out
 
 
@@ -557,7 +568,9 @@ def test_process_file_file_not_found_prints_distinct_message(
         options=reader.ReadOptions(),
     )
 
-    assert result is False
+    assert not result.written
+    assert result.error is not None
+    assert "File error while processing" in result.error
     assert "File error while processing" in capsys.readouterr().out
     logger.exception.assert_not_called()
 
@@ -583,7 +596,7 @@ def test_process_file_empty_input_file_logs_zero_characters(
         options=reader.ReadOptions(),
     )
 
-    assert result is True
+    assert result == reader.FileResult(written=True)
     assert fake_tts_client.synthesize_speech.call_count == 1
     log_content = tmp_config.usage_log_path.read_text(encoding="utf-8")
     assert "characters: 0" in log_content
@@ -617,7 +630,7 @@ def test_process_file_random_voice_mode_selects_from_pool(
         options=reader.ReadOptions(),
     )
 
-    assert result is True
+    assert result == reader.FileResult(written=True)
     log_content = config.usage_log_path.read_text(encoding="utf-8")
     assert "voice: en-US-Chirp3-HD-Puck" in log_content
 
@@ -864,6 +877,7 @@ def test_run_read_archives_only_successful_files(
     fake_tts_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     isolated_logging: None,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Test that only the file whose synthesis succeeded is moved to the archive."""
     (tmp_config.input_dir / "a.txt").write_text("First.", encoding="utf-8")
@@ -876,7 +890,10 @@ def test_run_read_archives_only_successful_files(
 
     result = reader.run_read(config=tmp_config, options=reader.ReadOptions(assume_yes=True))
 
-    assert result == 0
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "1 of 2 file(s) failed:" in out
+    assert "b.txt: OS error while processing" in out
     assert not (tmp_config.input_dir / "a.txt").exists()
     assert (tmp_config.archive_dir / "a.txt").exists()
     assert (tmp_config.input_dir / "b.txt").exists()
@@ -1189,6 +1206,321 @@ def test_run_read_no_input_files_never_prompts(
     out = capsys.readouterr().out
     assert result == 0
     assert "No text files found" in out
+
+
+# ---------------------------------------------------------------------------
+# failure summary / pause
+# ---------------------------------------------------------------------------
+
+
+def _write_inputs(config: StarlingConfig, *names: str) -> None:
+    """Create one small .txt per name in the input directory."""
+    for name in names:
+        (config.input_dir / name).write_text("Text.", encoding="utf-8")
+
+
+class _PromptRecorder:
+    """A `prompt` seam that records its calls and never blocks."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def __call__(self, text: str) -> str:
+        self.calls.append(text)
+        return ""
+
+
+def _forbidden_prompt(_text: str) -> str:
+    raise AssertionError("prompt must not be called")
+
+
+def test_run_read_all_succeed_prints_completed_and_returns_zero(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that a clean run prints the completion line and no failure summary."""
+    _write_inputs(tmp_config, "a.txt", "b.txt")
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(assume_yes=True))
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "All files completed." in out
+    assert "failed" not in out
+
+
+def test_run_read_failure_summary_lists_each_failed_file_with_reason(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that every failed file is listed with its reason and success is not claimed."""
+    _write_inputs(tmp_config, "a.txt", "b.txt", "c.txt")
+    fake_tts_client.synthesize_speech.side_effect = [
+        SimpleNamespace(audio_content=b"\x00\x01"),
+        PermissionError("locked"),
+        OSError("disk full"),
+    ]
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(assume_yes=True))
+
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "2 of 3 file(s) failed:" in out
+    assert "b.txt: Permission error while processing" in out
+    assert "c.txt: OS error while processing" in out
+    assert "All files completed." not in out
+
+
+def test_run_read_declined_overwrite_is_not_a_failure(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that skipping a file at the overwrite prompt neither fails nor archives it."""
+    _write_inputs(tmp_config, "a.txt")
+    (tmp_config.output_dir / "a.wav").write_bytes(b"existing")
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
+    monkeypatch.setattr(reader, "confirm_overwrite", lambda *_a, **_kw: False)
+
+    result = reader.run_read(config=tmp_config)
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "failed" not in out
+    assert (tmp_config.input_dir / "a.txt").exists()
+
+
+def test_run_read_archive_failure_is_reported_as_failure(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that a written .wav whose input could not be archived still counts as a failure."""
+    _write_inputs(tmp_config, "a.txt")
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
+    monkeypatch.setattr(reader, "archive_file", lambda *_a, **_kw: False)
+
+    result = reader.run_read(config=tmp_config, options=reader.ReadOptions(assume_yes=True))
+
+    assert result == 1
+    assert reader.ARCHIVE_FAILURE_REASON in capsys.readouterr().out
+
+
+def _failing_run_setup(
+    config: StarlingConfig,
+    client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Arrange one input file whose synthesis raises an OSError."""
+    _write_inputs(config, "a.txt")
+    client.synthesize_speech.side_effect = OSError("disk full")
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: client)
+
+
+def test_run_read_pause_on_error_waits_after_failed_file(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+) -> None:
+    """Test that a failed file with --pause-on-error holds the console open once."""
+    _failing_run_setup(tmp_config, fake_tts_client, monkeypatch)
+    prompt = _PromptRecorder()
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(assume_yes=True, pause_on_error=True),
+        prompt=prompt,
+    )
+
+    assert result == 1
+    assert len(prompt.calls) == 1
+    assert reader.PAUSE_PROMPT in prompt.calls[0]
+
+
+def test_run_read_pause_on_error_waits_after_config_error(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that an early config error is also held open, not lost with the window."""
+
+    def _raise(_config: StarlingConfig) -> None:
+        raise reader.ConfigError("boom")
+
+    monkeypatch.setattr(reader, "ensure_directories", _raise)
+    prompt = _PromptRecorder()
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(pause_on_error=True),
+        prompt=prompt,
+    )
+
+    assert result == 1
+    assert len(prompt.calls) == 1
+
+
+def test_run_read_pause_on_error_does_not_wait_on_success(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+) -> None:
+    """Test that a clean run never pauses, even with --pause-on-error."""
+    _write_inputs(tmp_config, "a.txt")
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(audio_content=b"\x00\x01")
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(assume_yes=True, pause_on_error=True),
+        prompt=_forbidden_prompt,
+    )
+
+    assert result == 0
+
+
+def test_run_read_without_pause_flag_never_prompts_on_failure(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+) -> None:
+    """Test that a user's own terminal is never left at an unexpected prompt."""
+    _failing_run_setup(tmp_config, fake_tts_client, monkeypatch)
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(assume_yes=True),
+        prompt=_forbidden_prompt,
+    )
+
+    assert result == 1
+
+
+def test_run_read_pause_on_error_prints_traceback_for_unexpected_crash(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that a crash with --pause-on-error is shown as a traceback, then held open."""
+
+    def _crash(_config: StarlingConfig | None, _options: reader.ReadOptions) -> int:
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(reader, "_run_read", _crash)
+    prompt = _PromptRecorder()
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(pause_on_error=True),
+        prompt=prompt,
+    )
+
+    assert result == 1
+    assert "RuntimeError: kaboom" in capsys.readouterr().err
+    assert len(prompt.calls) == 1
+
+
+def test_run_read_unexpected_crash_propagates_without_pause_flag(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that without the flag a crash is not swallowed."""
+
+    def _crash(_config: StarlingConfig | None, _options: reader.ReadOptions) -> int:
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(reader, "_run_read", _crash)
+
+    with pytest.raises(RuntimeError, match="kaboom"):
+        reader.run_read(config=tmp_config, prompt=_forbidden_prompt)
+
+
+def test_run_read_client_credentials_error_returns_one(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that a failing TextToSpeechClient() prints an error instead of a traceback."""
+    _write_inputs(tmp_config, "a.txt")
+
+    def _raise() -> None:
+        raise DefaultCredentialsError("no ADC")
+
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise)
+
+    result = reader.run_read(config=tmp_config)
+
+    assert result == 1
+    assert "could not reach Google Text-to-Speech" in capsys.readouterr().out
+
+
+def test_run_read_pause_on_error_waits_after_client_credentials_error(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_logging: None,
+) -> None:
+    """Test that the credentials early-return, the likeliest first-run failure, is held open."""
+    _write_inputs(tmp_config, "a.txt")
+
+    def _raise() -> None:
+        raise DefaultCredentialsError("no ADC")
+
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", _raise)
+    prompt = _PromptRecorder()
+
+    result = reader.run_read(
+        config=tmp_config,
+        options=reader.ReadOptions(pause_on_error=True),
+        prompt=prompt,
+    )
+
+    assert result == 1
+    assert len(prompt.calls) == 1
+
+
+def test_run_read_pause_on_error_does_not_swallow_keyboard_interrupt(
+    tmp_config: StarlingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that Ctrl+C is neither turned into a traceback nor held at a prompt."""
+
+    def _interrupt(_config: StarlingConfig | None, _options: reader.ReadOptions) -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(reader, "_run_read", _interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        reader.run_read(
+            config=tmp_config,
+            options=reader.ReadOptions(pause_on_error=True),
+            prompt=_forbidden_prompt,
+        )
+
+
+def test_wait_for_enter_swallows_eof() -> None:
+    """Test that a detached stdin returns at once instead of raising."""
+
+    def _eof(_text: str) -> str:
+        raise EOFError
+
+    assert reader.wait_for_enter(prompt=_eof) is None
 
 
 # ---------------------------------------------------------------------------

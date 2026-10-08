@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `starling read` ends with a list of every file that failed and why, and
+  `read --pause-on-error` waits for Enter before closing when anything failed. The reader
+  window opened by `starling capture` uses it, so failures are no longer lost when that window
+  closes.
+
+### Changed
+
+- `starling read` exits with status 1 when any file failed (it exited 0).
+
 ### Fixed
 
+- Missing or invalid Google credentials found while creating the Text-to-Speech client now
+  print an error instead of a traceback.
 - Dollar amounts with a scale word are read with the largest word that fits: "$3 trillion"
   is now "3 trillion dollars", not "3000 billion dollars". Quadrillion through decillion are
   recognized too; larger amounts stay in decillions ("1000 decillion dollars").

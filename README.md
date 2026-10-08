@@ -438,7 +438,7 @@ Bare `starling` (no subcommand) is shorthand for `starling read`. A leading `-h`
 
 | Command | What it does |
 |---|---|
-| `starling read [--input-dir PATH] [-y\|--yes\|--overwrite] [--dry-run\|--confirm]` | Synthesize every `.txt` in the input directory. The default command. |
+| `starling read [--input-dir PATH] [-y\|--yes\|--overwrite] [--dry-run\|--confirm] [--pause-on-error]` | Synthesize every `.txt` in the input directory. The default command. |
 | `starling capture` | Open the clipboard-capture window that saves articles into the input directory. |
 | `starling voices [LANGUAGE_CODE]` | List the Google voices available for a language (defaults to `STARLING_LANGUAGE_CODE`). |
 | `starling usage` | Print this month's character total from the usage log. |
@@ -448,6 +448,9 @@ Bare `starling` (no subcommand) is shorthand for `starling read`. A leading `-h`
 - `-y`, `--yes`, `--overwrite` — overwrite an existing `.wav` without prompting.
 - `--dry-run` — report what would be synthesized and billed, without calling Google or needing credentials.
 - `--confirm` — print the dry-run report, then ask before synthesizing for real. (Mutually exclusive with `--dry-run`.)
+- `--pause-on-error` — if any file failed, wait for Enter before exiting. `starling capture` launches the reader with this, so its console window stays open when something went wrong.
+
+`read` ends by listing every file that failed and why, and exits with status 1 if any did.
 
 `Ctrl-C` exits cleanly with status 130.
 

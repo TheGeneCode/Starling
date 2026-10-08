@@ -4,7 +4,8 @@ Batch-converts .txt files in the input directory to narrated .wav audio.
 Removes citations, converts the text to speech using Google Cloud TTS, and saves the
 resulting audio as .wav files in the output directory. Displays a spinner animation
 during processing, handles file overwrites with user confirmation, logs errors and
-usage, and moves processed files to an archive directory.
+usage, and moves processed files to an archive directory. A run that had failures ends
+with a summary listing each failed file and why, and exits 1.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import re
 import shutil
 import sys
 import time
+import traceback
 import wave
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -58,6 +60,12 @@ ERROR_LOG_PATH = CONFIG.error_log_path
 
 DEFAULT_SAMPLE_RATE_HERTZ: Final = 24000
 
+ARCHIVE_FAILURE_REASON: Final = (
+    "the .wav was written, but the input could not be moved to the archive, "
+    "so the next run will read it again"
+)
+PAUSE_PROMPT: Final = "Press Enter to close this window."
+
 # Short-scale words a listener knows, smallest first. Currency is re-expressed in the
 # largest one that fits, so the voice never says "thousand billion".
 SCALE_EXPONENTS: Final = {
@@ -86,6 +94,7 @@ class ReadOptions:
     dry_run: bool = False
     confirm: bool = False
     input_dir: Path | None = None
+    pause_on_error: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +106,22 @@ class DryRunEntry:
     char_count: int
     chunk_count: int
     output_exists: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FileResult:
+    """What `process_file` did with one input file."""
+
+    written: bool
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FileFailure:
+    """One input file `read` could not finish, for the end-of-run summary."""
+
+    path: Path
+    reason: str
 
 
 def spinner(should_spin: Event) -> None:
@@ -295,6 +320,26 @@ def confirm_synthesis(*, prompt: Callable[[str], str] = input) -> bool:
     return answer.lower() == "y"
 
 
+def print_failure_summary(failures: Sequence[FileFailure], total: int) -> None:
+    """Print the end-of-run list of failed files, so an error is not lost mid-scroll."""
+    print()
+    print(f"{len(failures)} of {total} file(s) failed:")
+    for failure in failures:
+        print(f"  {failure.path.name}: {failure.reason}")
+    print("Failed files stay in the input directory; the next `starling read` retries them.")
+
+
+def wait_for_enter(*, prompt: Callable[[str], str] = input) -> None:
+    """
+    Hold the console open until the user presses Enter.
+
+    EOF (no stdin attached) returns at once rather than raising, so a piped or
+    detached run never hangs or crashes here.
+    """
+    with contextlib.suppress(EOFError):
+        prompt(f"\n{PAUSE_PROMPT} ")
+
+
 def log_usage(
     usage_logger: logging.Logger,
     filename: str,
@@ -456,16 +501,21 @@ def process_file(
     usage_logger: logging.Logger,
     logger: logging.Logger,
     options: ReadOptions,
-) -> bool:
-    """Synthesize one article. Returns True only when the .wav was written and logged."""
+) -> FileResult:
+    """
+    Synthesize one article.
+
+    `written` is True only when the .wav was written and logged; `error` carries the
+    message printed for a failure.
+    """
     output_path = config.output_dir / f"{filepath.stem}.wav"
     if not confirm_overwrite(output_path, assume_yes=options.assume_yes):
-        return False
+        return FileResult(written=False)
 
     print(f"Starting {filepath.stem}")
     print(format_monthly_total(get_monthly_total(config.usage_log_path)))
 
-    success = False
+    error: str | None = None
     with spinner_running():
         try:
             # The read is inside the try on purpose: a locked or vanished file is a
@@ -487,21 +537,24 @@ def process_file(
                 len(text),
                 config.usage_log_path,
             )
-            success = True
         except FileNotFoundError as e:
-            print(f"File error while processing {filepath}: {e!s}")
+            error = f"File error while processing {filepath}: {e!s}"
+            print(error)
         except PermissionError as e:
-            print(f"Permission error while processing {filepath}: {e!s}")
+            error = f"Permission error while processing {filepath}: {e!s}"
+            print(error)
         except OSError as e:
-            print(f"OS error while processing {filepath}: {e!s}")
+            error = f"OS error while processing {filepath}: {e!s}"
+            print(error)
         except Exception:
             logger.exception("Unexpected error while processing %s", filepath)
-            print(
+            error = (
                 f"Unexpected error occurred while processing {filepath}. "
-                f"Check {config.error_log_path} for details.",
+                f"Check {config.error_log_path} for details."
             )
+            print(error)
     print("Finished")
-    return success
+    return FileResult(written=error is None, error=error)
 
 
 def _configured_voice_names(config: StarlingConfig) -> tuple[str, ...]:
@@ -574,13 +627,9 @@ def print_dry_run(
     )
 
 
-def run_read(
-    config: StarlingConfig | None = None,
-    options: ReadOptions | None = None,
-) -> int:
-    """Run the article-to-speech pipeline. Returns a process exit code."""
+def _run_read(config: StarlingConfig | None, options: ReadOptions) -> int:
+    """Run the pipeline proper; `run_read` wraps it with the optional pause."""
     config = config if config is not None else load_config()
-    options = options if options is not None else ReadOptions()
 
     try:
         ensure_directories(config)
@@ -626,8 +675,8 @@ def run_read(
     logger = get_logger(__name__)
     usage_logger = initialize_usage_logger(config.usage_log_path)
 
-    client = texttospeech.TextToSpeechClient()
     try:
+        client = texttospeech.TextToSpeechClient()
         voice_pool = resolve_voice_pool(config, client)
     except (UnknownVoiceError, ConfigError) as exc:
         print(f"Error: {exc}")
@@ -638,8 +687,9 @@ def run_read(
 
     print(pricing_notice([model_family(name) for name in voice_pool]))
 
+    failures: list[FileFailure] = []
     for filepath in input_paths:
-        if process_file(
+        result = process_file(
             filepath,
             client=client,
             config=config,
@@ -647,11 +697,44 @@ def run_read(
             usage_logger=usage_logger,
             logger=logger,
             options=options,
-        ):
-            archive_file(filepath, config.archive_dir)
+        )
+        if result.error is not None:
+            failures.append(FileFailure(filepath, result.error))
+        elif result.written and not archive_file(filepath, config.archive_dir):
+            failures.append(FileFailure(filepath, ARCHIVE_FAILURE_REASON))
 
+    if failures:
+        print_failure_summary(failures, len(input_paths))
+        return 1
     print("All files completed.")
     return 0
+
+
+def run_read(
+    config: StarlingConfig | None = None,
+    options: ReadOptions | None = None,
+    *,
+    prompt: Callable[[str], str] = input,
+) -> int:
+    """
+    Run the article-to-speech pipeline. Returns a process exit code.
+
+    With `options.pause_on_error`, any non-zero exit (a failed file, a config or
+    credentials error, or an unexpected crash, printed as a traceback) waits for Enter
+    first: `starling capture` runs the reader in a console that closes on exit, and the
+    error would close with it.
+    """
+    options = options if options is not None else ReadOptions()
+    try:
+        code = _run_read(config, options)
+    except Exception:
+        if not options.pause_on_error:
+            raise
+        traceback.print_exc()
+        code = 1
+    if code != 0 and options.pause_on_error:
+        wait_for_enter(prompt=prompt)
+    return code
 
 
 def run_usage(config: StarlingConfig | None = None) -> int:

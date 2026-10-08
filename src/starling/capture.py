@@ -114,9 +114,11 @@ def run_article_reader(*, confirm: bool = False) -> None:
     ``confirm`` appends ``--confirm``, so the child prints the dry-run cost report and
     asks before it bills anything. The prompt has to live in the child: this is a new
     console, and the Tk window is already being torn down when this is called.
+    ``--pause-on-error`` keeps that console open when anything failed; otherwise it
+    closes on exit and takes the error message with it.
     """
     creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
-    argv = [console_executable(), "-m", "starling", "read"]
+    argv = [console_executable(), "-m", "starling", "read", "--pause-on-error"]
     if confirm:
         argv.append("--confirm")
     # S603: the argv is this app's own interpreter and module name, not user input.

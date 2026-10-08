@@ -78,6 +78,7 @@ def _handle_read(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             confirm=args.confirm,
             input_dir=args.input_dir,
+            pause_on_error=args.pause_on_error,
         ),
     )
 
@@ -142,6 +143,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="assume_yes",
         action="store_true",
         help="Overwrite an existing .wav without asking. Makes the tool scriptable.",
+    )
+    read_parser.add_argument(
+        "--pause-on-error",
+        action="store_true",
+        help=(
+            "If anything failed, wait for Enter before exiting, so a console window "
+            "opened just for this run stays readable. `starling capture` passes this."
+        ),
     )
     preview_group = read_parser.add_mutually_exclusive_group()
     preview_group.add_argument(
