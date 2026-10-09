@@ -61,6 +61,7 @@ USAGE_LOG_PATH = CONFIG.usage_log_path
 ERROR_LOG_PATH = CONFIG.error_log_path
 
 DEFAULT_SAMPLE_RATE_HERTZ: Final = 24000
+WAV_MAGIC: Final = b"RIFF"
 
 ARCHIVE_FAILURE_REASON: Final = (
     "the .wav was written, but the input could not be moved to the archive, "
@@ -463,6 +464,29 @@ def split_text_into_chunks(text: str, max_bytes: int = 4500) -> list[str]:
     return chunks
 
 
+def wav_pcm_frames(chunk: bytes, *, sample_rate: int) -> bytes:
+    """
+    Return the PCM frames of one synthesized chunk, without any WAV header.
+
+    Google returns LINEAR16 audio as a whole WAV file; joining those bytes as PCM
+    plays each header as a click. Bytes that are not a WAV file are taken to be raw PCM
+    already. Raises ValueError when the chunk's format differs from the mono 16-bit
+    `sample_rate` audio `combine_audio_chunks` writes, and wave.Error or EOFError for a
+    malformed or truncated one.
+    """
+    if not chunk.startswith(WAV_MAGIC):
+        return chunk
+    with wave.open(io.BytesIO(chunk), "rb") as wav_file:
+        found = (wav_file.getnchannels(), wav_file.getsampwidth(), wav_file.getframerate())
+        if found != (1, 2, sample_rate):
+            msg = (
+                f"Synthesized audio is {found[0]} channel(s), {found[1] * 8}-bit, "
+                f"{found[2]} Hz; expected mono 16-bit {sample_rate} Hz."
+            )
+            raise ValueError(msg)
+        return wav_file.readframes(wav_file.getnframes())
+
+
 def combine_audio_chunks(
     audio_chunks: list[bytes],
     sample_rate: int = 24000,
@@ -471,7 +495,7 @@ def combine_audio_chunks(
     Combine multiple raw audio chunks (LINEAR16 format) into a single WAV file.
 
     Args:
-        audio_chunks: List of raw audio byte chunks
+        audio_chunks: List of headerless PCM byte chunks (see `wav_pcm_frames`)
         sample_rate: Sample rate in Hz (default 24000)
 
     Returns:
@@ -530,11 +554,14 @@ def synthesize_text(
         sample_rate_hertz=sample_rate,
     )
     audio_chunks = [
-        client.synthesize_speech(
-            input=texttospeech.SynthesisInput(text=chunk),
-            voice=voice,
-            audio_config=audio_config,
-        ).audio_content
+        wav_pcm_frames(
+            client.synthesize_speech(
+                input=texttospeech.SynthesisInput(text=chunk),
+                voice=voice,
+                audio_config=audio_config,
+            ).audio_content,
+            sample_rate=sample_rate,
+        )
         for chunk in split_text_into_chunks(text)
     ]
     return combine_audio_chunks(audio_chunks, sample_rate)

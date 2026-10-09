@@ -136,6 +136,11 @@ def test_refine_text_stops_at_latest_news_marker_line() -> None:
     assert result == "Line one\n"
 
 
+def test_refine_text_normalizes_crlf_and_lone_cr_to_lf() -> None:
+    """Test that clipboard CRLF and lone CR become LF, so saving cannot double them."""
+    assert refine_text("One\r\nTwo\rThree\n") == "One\nTwo\nThree\n"
+
+
 def test_refine_text_no_discard_markers_present() -> None:
     """Test that text without any discard marker or footnote passes through unchanged."""
     text = "Plain text with nothing special.\nSecond line.\n"

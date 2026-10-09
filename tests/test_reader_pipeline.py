@@ -28,6 +28,7 @@ from starling.config import StarlingConfig, VoiceMode, ensure_directories
 from starling.pronunciations import PronunciationGuide
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -181,6 +182,52 @@ def test_synthesize_text_returns_parseable_wav(
         assert wav_file.getframerate() == 24000
         assert wav_file.getnchannels() == 1
         assert wav_file.readframes(2) == b"\x01\x00\x02\x00"
+
+
+def test_synthesize_text_drops_per_chunk_headers(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tts_client: MagicMock,
+    wav_chunk: Callable[..., bytes],
+) -> None:
+    """Test that Google's per-chunk WAV headers are stripped, leaving one header in the output."""
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: ["a", "b"])
+    fake_tts_client.synthesize_speech.side_effect = [
+        SimpleNamespace(audio_content=wav_chunk(b"\x01\x00\x02\x00")),
+        SimpleNamespace(audio_content=wav_chunk(b"\x03\x00")),
+    ]
+
+    wav_bytes = reader.synthesize_text(
+        fake_tts_client,
+        "irrelevant",
+        voice_name="en-US-Chirp3-HD-Aoede",
+        language_code="en-US",
+    )
+
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+        assert wav_file.getnframes() == 3
+        assert wav_file.readframes(3) == b"\x01\x00\x02\x00\x03\x00"
+    assert wav_bytes.count(b"RIFF") == 1
+    assert len(wav_bytes) == 44 + 6
+
+
+def test_synthesize_text_format_mismatch_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tts_client: MagicMock,
+    wav_chunk: Callable[..., bytes],
+) -> None:
+    """Test that a chunk returned at the wrong sample rate fails the synthesis."""
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: ["a"])
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
+        audio_content=wav_chunk(b"\x00\x00", sample_rate=16000)
+    )
+
+    with pytest.raises(ValueError, match="16000 Hz"):
+        reader.synthesize_text(
+            fake_tts_client,
+            "irrelevant",
+            voice_name="en-US-Chirp3-HD-Aoede",
+            language_code="en-US",
+        )
 
 
 def test_synthesize_text_passes_voice_and_language(fake_tts_client: MagicMock) -> None:

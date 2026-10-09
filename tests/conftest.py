@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import os
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -165,6 +167,24 @@ def fake_tts_client(voice_catalog: list[SimpleNamespace]) -> MagicMock:
     client = MagicMock()
     client.list_voices.return_value = SimpleNamespace(voices=voice_catalog)
     return client
+
+
+@pytest.fixture
+def wav_chunk() -> Callable[..., bytes]:
+    """Build one chunk the way Google returns LINEAR16: a whole WAV file around `frames`."""
+
+    def _build(
+        frames: bytes, *, sample_rate: int = 24000, channels: int = 1, sampwidth: int = 2
+    ) -> bytes:
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(sampwidth)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(frames)
+        return buffer.getvalue()
+
+    return _build
 
 
 @pytest.fixture

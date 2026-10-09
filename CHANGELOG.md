@@ -21,9 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Audio no longer clicks at the start and where long articles were joined. Each synthesized
+  piece arrived with its own WAV header, which was kept and played as a short burst of noise.
 - Long articles are no longer split for synthesis in the middle of a quotation. A piece of
   text ending inside an open quote made the voice read a quoted phrase as "quote quote
   quote..." instead of its words.
+- Captured articles are saved with normal line endings. On Windows each line ended in an
+  extra carriage return, so editors showed twice the real number of lines.
 - Missing or invalid Google credentials found while creating the Text-to-Speech client now
   print an error instead of a traceback.
 - Dollar amounts with a scale word are read with the largest word that fits: "$3 trillion"

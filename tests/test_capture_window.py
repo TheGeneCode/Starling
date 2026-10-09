@@ -218,6 +218,26 @@ def test_poll_clipboard_text_that_refines_to_empty_string_never_fills_slot(
     assert window.previous_clipboard == "[2]"
 
 
+def test_poll_crlf_clipboard_pair_lands_on_disk_without_carriage_returns(
+    tk_root: tk.Tk, tmp_config: StarlingConfig
+) -> None:
+    """Test that CRLF clipboard text is saved with bare LF and keeps its lines."""
+    raw_body = "Line one.\r\nLine two.\r\nLine three.\r\nFor more\r\nignored tail\r\n"
+    window = CaptureWindow(
+        tmp_config,
+        root=tk_root,
+        clipboard_read=_clipboard_sequence("", raw_body, "Short Title"),
+    )
+
+    window.poll_clipboard_once()
+    result = window.poll_clipboard_once()
+
+    assert result is not None
+    data = result.read_bytes()
+    assert b"\r\r" not in data
+    assert data.decode("utf-8").splitlines() == ["Line one.", "Line two.", "Line three."]
+
+
 def test_save_pair_propagates_oserror_when_output_dir_missing(
     tk_root: tk.Tk, tmp_config: StarlingConfig
 ) -> None:

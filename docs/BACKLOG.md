@@ -19,16 +19,6 @@ system-wide half of the same audit is in `dev/backlog.txt`.
 
 ## Open
 
-### 13. Each synthesis chunk's WAV header is played as audio
-
-Found 2026-10-09 while diagnosing #10. With `LINEAR16`, Google returns each chunk's
-`audio_content` with its own 44-byte RIFF header. `synthesize_text` in
-`src/starling/reader.py` passes those bytes straight to `combine_audio_chunks`, which joins
-them as raw PCM and wraps the result in a new header. So every output has a stray header at
-byte 44 and one more at each chunk join, each played as about 22 samples of noise, a short click.
-The San Luis Valley ranch `.wav` has them at bytes 44 and 12,172,888 (about 4:13). The fix
-strips the header from each chunk, or reads the frames with `wave`, before joining.
-
 ### 5. `normalize_version` is byte-identical to MeadowLark's
 
 `src/starling/update_check.py:55` and MeadowLark `src/version_utils.py:51` are the same
@@ -44,16 +34,32 @@ copies of MeadowLark's and have diverged in both directions. Each release-proces
 in one repo. `dev/backlog.txt` item 14 covers the shared solution. Which copy is newer is
 recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
 
+## Closed
+
 ### 14. Captured articles are saved with `\r\r\n` line endings
 
 Found 2026-10-09 while diagnosing #10. On Windows the clipboard text already has `\r\n`.
 `CaptureWindow._save_pair` in `src/starling/capture.py` writes it with `Path.write_text`, whose
 text mode turns each `\n` into `\r\n`. Every line then ends `\r\r\n`, and editors show twice the
 real line count (line 23 shows as line 45). Speech is unaffected: `read` reads with
-universal newlines and the sentence split collapses whitespace. The fix normalizes newlines in
-`refine_text` or passes `newline=""` when writing.
+universal newlines and the sentence split collapses whitespace.
 
-## Closed
+Closed 2026-10-09. `refine_text` now converts `\r\n` and lone `\r` to `\n` before anything else,
+so the text-mode write emits one native line ending. Files already saved keep their `\r\r\n`.
+
+### 13. Each synthesis chunk's WAV header is played as audio
+
+Found 2026-10-09 while diagnosing #10. With `LINEAR16`, Google returns each chunk's
+`audio_content` with its own 44-byte RIFF header. `synthesize_text` in
+`src/starling/reader.py` passed those bytes straight to `combine_audio_chunks`, which joins
+them as raw PCM and wraps the result in a new header. So every output had a stray header at
+byte 44 and one more at each chunk join, each played as about 22 samples of noise, a short click.
+The San Luis Valley ranch `.wav` has them at bytes 44 and 12,172,888 (about 4:13).
+
+Closed 2026-10-09, fixed per `plans/strip-chunk-wav-headers.md`. `synthesize_text` now passes
+each chunk through `wav_pcm_frames`, which reads the frames with `wave` and rejects a chunk whose
+format differs from the request. Existing .wav files keep their clicks; re-synthesize to remove
+them.
 
 ### 12. Read failures are not reported, and the reader's console closes on them (filed as #9)
 

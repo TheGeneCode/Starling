@@ -23,6 +23,7 @@ import starling.reader
 from starling import reader
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -453,6 +454,54 @@ def test_split_text_into_chunks_stray_unclosed_quote_falls_back_without_losing_t
     assert len(result) > 1
     assert all(len(chunk.encode("utf-8")) <= 40 for chunk in result)
     assert " ".join(result) == text
+
+
+# ---------------------------------------------------------------------------
+# wav_pcm_frames
+# ---------------------------------------------------------------------------
+
+
+def test_wav_pcm_frames_strips_header(wav_chunk: Callable[..., bytes]) -> None:
+    """Test that a whole WAV file is reduced to exactly its PCM frames."""
+    frames = b"\x01\x00\x02\x00"
+    assert reader.wav_pcm_frames(wav_chunk(frames), sample_rate=24000) == frames
+
+
+def test_wav_pcm_frames_passes_raw_pcm_through() -> None:
+    """Test that bytes without a RIFF header are treated as raw PCM and returned unchanged."""
+    raw = b"\x01\x00\x02\x00"
+    assert reader.wav_pcm_frames(raw, sample_rate=24000) == raw
+
+
+def test_wav_pcm_frames_empty_bytes() -> None:
+    """Test that empty input is not RIFF, so it passes through without raising."""
+    assert reader.wav_pcm_frames(b"", sample_rate=24000) == b""
+
+
+def test_wav_pcm_frames_zero_frame_wav(wav_chunk: Callable[..., bytes]) -> None:
+    """Test that a structurally valid WAV with no frames yields empty PCM."""
+    assert reader.wav_pcm_frames(wav_chunk(b""), sample_rate=24000) == b""
+
+
+def test_wav_pcm_frames_rejects_sample_rate_mismatch(wav_chunk: Callable[..., bytes]) -> None:
+    """Test that a chunk at a different rate than requested raises rather than playing off-pitch."""
+    chunk = wav_chunk(b"\x00\x00", sample_rate=16000)
+    with pytest.raises(ValueError, match="16000 Hz"):
+        reader.wav_pcm_frames(chunk, sample_rate=24000)
+
+
+def test_wav_pcm_frames_rejects_stereo(wav_chunk: Callable[..., bytes]) -> None:
+    """Test that a non-mono chunk raises, since combine_audio_chunks writes mono."""
+    chunk = wav_chunk(b"\x00\x00\x00\x00", channels=2)
+    with pytest.raises(ValueError, match="2 channel"):
+        reader.wav_pcm_frames(chunk, sample_rate=24000)
+
+
+def test_wav_pcm_frames_rejects_non_16_bit_width(wav_chunk: Callable[..., bytes]) -> None:
+    """Test that a non-16-bit chunk raises, since combine_audio_chunks writes 16-bit."""
+    chunk = wav_chunk(b"\x00\x00", sampwidth=1)
+    with pytest.raises(ValueError, match="8-bit"):
+        reader.wav_pcm_frames(chunk, sample_rate=24000)
 
 
 # ---------------------------------------------------------------------------

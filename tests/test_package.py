@@ -68,6 +68,7 @@ def test_reader_exposes_pure_helpers() -> None:
         "remove_citations",
         "convert_numbers_to_words",
         "split_text_into_chunks",
+        "wav_pcm_frames",
         "combine_audio_chunks",
         "get_monthly_total",
         "initialize_usage_logger",

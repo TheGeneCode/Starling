@@ -54,6 +54,9 @@ def make_filename_ready(filename: str) -> str:
 
 
 def refine_text(text: str) -> str:
+    # Windows clipboard text already ends lines with \r\n; text-mode write_text would turn
+    # each \n into \r\n again, saving \r\r\n.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"\[\d+\]", "", text)
     discard_after_strings = ["Related:"]
     discard_after_lines = ["For more", "THE LATEST NEWS"]
