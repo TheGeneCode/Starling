@@ -386,6 +386,75 @@ def test_split_text_into_chunks_default_max_bytes() -> None:
     assert len(result[0].encode("utf-8")) <= 4500
 
 
+def test_split_text_into_chunks_never_ends_a_chunk_inside_a_quotation() -> None:
+    """
+    A chunk boundary must not fall between a quotation's “ and ”.
+
+    Chirp 3 HD, given a chunk ending in an unclosed “, reliably reads a nearby quoted
+    phrase as "quote quote quote..." (backlog #10). The size-only split put the
+    boundary after "chance." here, inside the quotation.
+    """
+    quotation = "The work is a “rare chance. If lost, it may not return,” the report says."
+    text = f"Lead. {quotation} Tail."
+    # Exactly room for the quotation plus the packer's trailing space.
+    result = reader.split_text_into_chunks(text, max_bytes=len(quotation.encode("utf-8")) + 1)
+    assert result == ["Lead.", quotation, "Tail."]
+
+
+def test_split_text_into_chunks_keeps_a_continued_quotation_together() -> None:
+    """
+    A quotation continued into the next paragraph (no ” before the new “) is one passage.
+
+    News style leaves the first paragraph unclosed and reopens the next with “; the
+    passage only ends at the ”.
+    """
+    passage = "“It was rejected. The vote was clear. “No one backed it,” she said."
+    text = "Lead. " + passage.replace("clear. ", "clear.\n\n") + " Done."
+    result = reader.split_text_into_chunks(text, max_bytes=len(passage.encode("utf-8")) + 1)
+    assert result == ["Lead.", passage, "Done."]
+
+
+def test_split_text_into_chunks_splits_an_oversized_quotation_at_sentences() -> None:
+    """A quotation larger than max_bytes still splits at sentence boundaries, never whole."""
+    text = "“One. Two. Three.” Four."
+    result = reader.split_text_into_chunks(text, max_bytes=20)
+    assert result == ["“One. Two.", "Three.” Four."]
+
+
+@pytest.mark.parametrize(
+    ("headroom", "expected"),
+    [
+        (1, ["“Aa. Bb.”"]),  # joined + trailing space == max_bytes: fits
+        (0, ["“Aa.", "Bb.”"]),  # joined == max_bytes: trailing space can't fit, fall back
+    ],
+)
+def test_split_text_into_chunks_quotation_fit_boundary_is_exclusive(
+    headroom: int, expected: list[str]
+) -> None:
+    """A quotation of exactly max_bytes bytes falls back; one byte smaller stays whole."""
+    quotation = "“Aa. Bb.”"
+    result = reader.split_text_into_chunks(
+        quotation, max_bytes=len(quotation.encode("utf-8")) + headroom
+    )
+    assert result == expected
+
+
+def test_split_text_into_chunks_stray_unclosed_quote_falls_back_without_losing_text() -> None:
+    """
+    A “ with no ” anywhere after it must not swallow the rest of the text into one chunk.
+
+    Everything after the stray opener forms a single group; once that group exceeds
+    max_bytes it has to fall back to sentence packing, keeping every chunk in budget
+    and the text intact and in order.
+    """
+    sentences = ["Lead.", "“Open one.", *[f"Body {i}." for i in range(30)]]
+    text = " ".join(sentences)
+    result = reader.split_text_into_chunks(text, max_bytes=40)
+    assert len(result) > 1
+    assert all(len(chunk.encode("utf-8")) <= 40 for chunk in result)
+    assert " ".join(result) == text
+
+
 # ---------------------------------------------------------------------------
 # combine_audio_chunks
 # ---------------------------------------------------------------------------

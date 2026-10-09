@@ -68,6 +68,9 @@ ARCHIVE_FAILURE_REASON: Final = (
 )
 PAUSE_PROMPT: Final = "Press Enter to close this window."
 
+OPEN_QUOTE: Final = "“"
+CLOSE_QUOTE: Final = "”"
+
 # Short-scale words a listener knows, smallest first. Currency is re-expressed in the
 # largest one that fits, so the voice never says "thousand billion".
 SCALE_EXPONENTS: Final = {
@@ -383,11 +386,49 @@ def log_usage(
         handler.flush()
 
 
+def ends_inside_quotation(text: str, *, inside: bool = False) -> bool:
+    """
+    Return whether `text` ends between a “ and its ”, given the state it started in.
+
+    Curly quotes only: a straight " cannot say whether it opens or closes, and an inch
+    mark would flip the state. A “ with no ” before the next “ (a quotation continued
+    into the next paragraph, news style) stays open until a ” arrives.
+    """
+    last_open = text.rfind(OPEN_QUOTE)
+    last_close = text.rfind(CLOSE_QUOTE)
+    if last_open == last_close:  # both -1: no curly quote at all
+        return inside
+    return last_open > last_close
+
+
+def group_sentences_by_quotation(sentences: Sequence[str]) -> list[list[str]]:
+    """
+    Group consecutive sentences so no group ends inside a quotation.
+
+    Chirp 3 HD, sent a chunk that ends in an unclosed “, can read a quoted phrase as
+    "quote quote quote..." instead of its words (backlog #10), so chunk boundaries
+    go only between groups.
+    """
+    groups: list[list[str]] = []
+    current: list[str] = []
+    inside = False
+    for sentence in sentences:
+        current.append(sentence)
+        inside = ends_inside_quotation(sentence, inside=inside)
+        if not inside:
+            groups.append(current)
+            current = []
+    if current:
+        groups.append(current)
+    return groups
+
+
 def split_text_into_chunks(text: str, max_bytes: int = 4500) -> list[str]:
     """
     Split text into chunks that don't exceed max_bytes when encoded as UTF-8.
 
-    Tries to split at sentence boundaries to maintain readability.
+    Splits at sentence boundaries outside quotations. A quotation that alone exceeds
+    max_bytes falls back to its sentence boundaries.
 
     Args:
         text: The text to split
@@ -401,8 +442,13 @@ def split_text_into_chunks(text: str, max_bytes: int = 4500) -> list[str]:
 
     # Split by sentences (period, exclamation, question mark)
     sentences = re.split(r"(?<=[.!?])\s+", text)
+    pieces: list[str] = []
+    for group in group_sentences_by_quotation(sentences):
+        joined = " ".join(group)
+        # Fits alone, trailing space included; otherwise fall back to its sentences.
+        pieces.extend([joined] if len(joined.encode("utf-8")) < max_bytes else group)
 
-    for sentence in sentences:
+    for sentence in pieces:
         test_chunk = current_chunk + sentence + " "
         if len(test_chunk.encode("utf-8")) <= max_bytes:
             current_chunk = test_chunk

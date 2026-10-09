@@ -9,7 +9,7 @@ with a re-diagnosis.
 
 ## Issue numbering
 
-**Next issue number: 13.**
+**Next issue number: 15.**
 
 Issue numbers are permanent IDs. Do not reuse a number when an issue is closed or removed.
 
@@ -18,6 +18,16 @@ formatting issues in CHANGELOG.md", 2026-09-03, plus uncommitted `.claude/` chan
 system-wide half of the same audit is in `dev/backlog.txt`.
 
 ## Open
+
+### 13. Each synthesis chunk's WAV header is played as audio
+
+Found 2026-10-09 while diagnosing #10. With `LINEAR16`, Google returns each chunk's
+`audio_content` with its own 44-byte RIFF header. `synthesize_text` in
+`src/starling/reader.py` passes those bytes straight to `combine_audio_chunks`, which joins
+them as raw PCM and wraps the result in a new header. So every output has a stray header at
+byte 44 and one more at each chunk join, each played as about 22 samples of noise, a short click.
+The San Luis Valley ranch `.wav` has them at bytes 44 and 12,172,888 (about 4:13). The fix
+strips the header from each chunk, or reads the frames with `wave`, before joining.
 
 ### 5. `normalize_version` is byte-identical to MeadowLark's
 
@@ -33,6 +43,15 @@ copies diverge.
 copies of MeadowLark's and have diverged in both directions. Each release-process fix now lands
 in one repo. `dev/backlog.txt` item 14 covers the shared solution. Which copy is newer is
 recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
+
+### 14. Captured articles are saved with `\r\r\n` line endings
+
+Found 2026-10-09 while diagnosing #10. On Windows the clipboard text already has `\r\n`.
+`CaptureWindow._save_pair` in `src/starling/capture.py` writes it with `Path.write_text`, whose
+text mode turns each `\n` into `\r\n`. Every line then ends `\r\r\n`, and editors show twice the
+real line count (line 23 shows as line 45). Speech is unaffected: `read` reads with
+universal newlines and the sentence split collapses whitespace. The fix normalizes newlines in
+`refine_text` or passes `newline=""` when writing.
 
 ## Closed
 
@@ -60,13 +79,16 @@ largest word from million to decillion and keeps amounts past that in decillions
 Reported on a Colorado Sun article (2026-10-03): 4 to 6 "quote"s read out in a row a couple of
 times, not every quote mark.
 
-Closed 2026-10-06, not a Starling defect. The archived input has no repeated quote characters,
-only paired `“ ”`. Several sentences carry 4 or 6 of them, e.g. three short quoted phrases in
-one sentence. Both synthesis chunks are quote-balanced, so a chunk boundary does not orphan a
-quote. Starling sends the text unchanged, which makes this Chirp 3 HD model output, and it is
-not deterministic. Normal "quote" reading is wanted; stripping or announcing every quote was
-rejected. Reopen only with the failing `.wav` and a rough timestamp, then test against it
-(smaller chunks, ASCII quotes).
+First closed 2026-10-06 as model output: that article's two chunks were quote-balanced.
+Reopened 2026-10-09 with a failing `.wav` (San Luis Valley ranch article, 2:57: "regarding the
+quote ×9" in place of “working relationship”). `split_text_into_chunks` split at a sentence
+end inside a quotation, so chunk 0 ended in an unclosed `“`. Re-synthesized with the same voice
+and transcribed locally: the as-sent chunk looped 3/3, ASCII quotes 1/3, the same chunk cut
+before the quotation 0/3, and the paragraph alone 0/10. 13 of 66 archived multi-chunk articles
+had such a split. Fixed the same day: chunk boundaries fall only outside `“…”` passages.
+A single "quote," still occurs (6/10 on the paragraph alone). That is normal reading, and
+stripping or announcing every quote was rejected. The 10-03 article looped with balanced
+chunks, so Chirp 3 HD can still do it rarely without a mid-quote split.
 
 ### 9. `starling capture` imports the whole Google TTS stack before opening its window
 
