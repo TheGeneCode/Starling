@@ -35,11 +35,11 @@ dependencies = [
     # Capped below the next major: `uv tool install …@vX.Y.Z` resolves fresh against these
     # ranges (uv.lock is not used for end-user installs), so an uncapped 3.0 would break every
     # new install with no code change. scripts/check_pins.py flags when 3.x ships.
-    "google-cloud-texttospeech>=2.33.0,<3",
+    "google-cloud-texttospeech>=2.38.0,<3",
     "num2words>=0.5.13",
-    "pyperclip>=1.9.0",
-    "python-dotenv>=1.2.1",
-    "requests>=2.32.0",
+    "pyperclip>=1.11.0",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
     # Direct reference, not `[tool.uv.sources]`: uv sources are development-only config
     # and are ignored for transitive and direct-URL requirements, so a plain
     # `Requires-Dist: genekit` in the wheel would be looked up on PyPI, where genekit
@@ -57,14 +57,14 @@ starling = "starling.cli:main"
 
 [dependency-groups]
 dev = [
-    "pillow>=11.0",
-    "pytest>=8.0",
+    "pillow>=13.0.0",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "ruff>=0.16.5",
+    "ruff>=0.17.3",
 ]
 
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
