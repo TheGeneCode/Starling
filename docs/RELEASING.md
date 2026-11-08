@@ -110,6 +110,16 @@ across, not the other way.** As of 2026-09-24:
 The shared solution is `dev/backlog.txt` item 14; until it lands, a fix to any of these
 files should be checked against the other repo's copy.
 
+## Monthly maintenance check
+
+`.github/workflows/maintenance-check.yml` runs `scripts/check_pins.py` on the 1st of each month
+(and on demand: `gh workflow run maintenance-check.yml`). It keeps one issue, "Monthly maintenance
+check", listing what is due: a newer genekit `py-v*` tag than the pin, a released CPython above the
+`classifiers` ceiling, a `google-cloud-texttospeech` major at or above the cap, a README pricing
+check older than 90 days, or a `uv.lock` change since the last tag. A check that cannot run (network,
+parse error) is listed too, so silence always means "checked and fine". When nothing is due, it
+closes the issue. Dependabot handles everything else (actions SHAs and `uv.lock`).
+
 ## Why there is no PyPI publish
 
 `genekit` is declared as a PEP 508 direct reference

@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `starling read` exits with status 1 when any file failed (it exited 0).
+- Installing Starling never picks up a `google-cloud-texttospeech` 3.x release automatically;
+  the dependency is capped below 3 until Starling is tested against it.
 
 ### Fixed
 

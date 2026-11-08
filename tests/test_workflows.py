@@ -21,6 +21,7 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 _WORKFLOWS: Final = REPO_ROOT / ".github" / "workflows"
 _CI: Final = _WORKFLOWS / "ci.yml"
 _RELEASE: Final = _WORKFLOWS / "release.yml"
+_MAINTENANCE: Final = _WORKFLOWS / "maintenance-check.yml"
 _DEPENDABOT: Final = REPO_ROOT / ".github" / "dependabot.yml"
 
 _USES: Final = re.compile(r"^\s*(?:-\s+)?uses:\s*([^\s#]+)", re.MULTILINE)
@@ -176,6 +177,23 @@ def test_release_publishes_checksums_attestation_and_changelog_notes() -> None:
     assert "body_path: release_notes.md" in text
     assert "scripts/release_notes.py" in text
     assert "generate_release_notes" not in text
+
+
+def test_maintenance_write_scope_is_issues_only() -> None:
+    """The monthly check may edit one issue; it must never push code or open pull requests."""
+    text = _MAINTENANCE.read_text(encoding="utf-8")
+    assert re.search(r"^permissions:\n  contents: read$", text, re.MULTILINE)
+    assert text.count("issues: write") == 1
+    assert "contents: write" not in text
+    assert "pull-requests: write" not in text
+
+
+def test_maintenance_runs_check_pins_with_locked_sync() -> None:
+    text = _MAINTENANCE.read_text(encoding="utf-8")
+    assert "uv sync --locked" in text
+    assert "uv run --no-sync python scripts/check_pins.py" in text
+    assert "fetch-depth: 0" in text, "release-due needs tags and history"
+    assert "workflow_dispatch:" in text
 
 
 def test_dependabot_groups_actions_and_uv() -> None:

@@ -32,7 +32,10 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "google-cloud-texttospeech>=2.33.0",
+    # Capped below the next major: `uv tool install …@vX.Y.Z` resolves fresh against these
+    # ranges (uv.lock is not used for end-user installs), so an uncapped 3.0 would break every
+    # new install with no code change. scripts/check_pins.py flags when 3.x ships.
+    "google-cloud-texttospeech>=2.33.0,<3",
     "num2words>=0.5.13",
     "pyperclip>=1.9.0",
     "python-dotenv>=1.2.1",

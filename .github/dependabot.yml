@@ -1,4 +1,6 @@
-# Dependabot covers GitHub Actions and the Python lockfile (pyproject.toml + uv.lock).
+# Dependabot covers GitHub Actions and the Python lockfile (pyproject.toml + uv.lock). The pins it
+# cannot see (genekit's git tag, the CPython ceiling, the TTS major cap) are checked monthly by
+# .github/workflows/maintenance-check.yml.
 version: 2
 updates:
   - package-ecosystem: "github-actions"

@@ -237,7 +237,7 @@ def captured_threads(monkeypatch: pytest.MonkeyPatch) -> list[MagicMock]:
 
 
 @pytest.fixture
-def import_script() -> Callable[[str], ModuleType]:
+def import_script(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], ModuleType]:
     """
     Load a module from scripts/ by filename.
 
@@ -245,16 +245,21 @@ def import_script() -> Callable[[str], ModuleType]:
     pyproject.toml) so its maintenance scripts stay independent of the installed
     ``starling`` package. That means they can't be imported with a normal
     ``import`` statement in tests; load them from their file path instead.
+
+    The module is registered in ``sys.modules`` for the duration of the test, because
+    ``@dataclass`` under ``from __future__ import annotations`` looks its own module up there.
     """
 
     def _load(filename: str) -> ModuleType:
         import importlib.util
+        import sys
 
         path = _SCRIPTS_DIR / filename
         spec = importlib.util.spec_from_file_location(path.stem, path)
         assert spec is not None
         assert spec.loader is not None
         module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, path.stem, module)
         spec.loader.exec_module(module)
         return module
 
