@@ -83,6 +83,8 @@ Two alternatives:
 - **From a release wheel:** download `starling-X.Y.Z-py3-none-any.whl` from the [Releases page](https://github.com/TheGeneCode/Starling/releases), then
   `uv tool install ./starling-X.Y.Z-py3-none-any.whl`.
 
+Every release also carries a `SHA256SUMS` file and a build-provenance attestation, so a downloaded wheel can be checked with `sha256sum -c SHA256SUMS --ignore-missing` or `gh attestation verify starling-X.Y.Z-py3-none-any.whl --repo TheGeneCode/Starling`.
+
 If `starling` is not found after installing, `uv tool update-shell` puts uv's tool directory on `PATH` (a new shell is needed afterwards).
 
 ---

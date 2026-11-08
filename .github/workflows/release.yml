@@ -4,23 +4,36 @@ on:
   push:
     tags: ["v*.*.*"]
 
+# Least privilege by default; only the release job widens it.
 permissions:
   contents: read
 
 jobs:
+  # The same test, lint and package jobs as every push. A red suite never reaches the build.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: ci
     # ubuntu-latest, not windows-latest: the wheel is py3-none-any. MeadowLark's release
     # job needs Windows only because it builds a PyInstaller exe and an Inno Setup
     # installer; Starling has neither.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: write      # create the GitHub Release and upload assets
+      id-token: write      # OIDC token for attest-build-provenance
+      attestations: write  # store the provenance attestation
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          enable-cache: true
+          # Nothing in this job pushes; keep the write token out of .git/config.
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # No cache in the job that publishes artifacts: a restored cache is input this job did not build.
+          enable-cache: false
 
       # A wheel whose version came only from the tag, while the committed pyproject.toml
       # says something else, means `git checkout vX.Y.Z` does not reproduce the release.
@@ -35,14 +48,6 @@ jobs:
             echo "::error::Run the docs/RELEASING.md checklist: bump and commit the version, then tag."
             exit 1
           fi
-
-      - name: Verify CHANGELOG.md has an entry for this release
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          grep -q "^## \[${TAG_VERSION}\]" CHANGELOG.md || {
-            echo "::error::CHANGELOG.md has no '## [${TAG_VERSION}]' section."
-            exit 1
-          }
 
       - name: Stamp version from tag
         run: uv version "${GITHUB_REF_NAME#v}"
@@ -70,11 +75,29 @@ jobs:
       - name: Smoke-test the built wheel in a clean environment
         run: uv run --isolated --no-project --with dist/*.whl -- starling --version
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      # Fails with ::error:: when CHANGELOG.md has no section for this version.
+      - name: Write checksums and release notes
+        run: |
+          (cd dist && sha256sum -- *.whl *.tar.gz > SHA256SUMS)
+          python3 scripts/release_notes.py \
+            --version "${GITHUB_REF_NAME#v}" \
+            --checksums dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --out release_notes.md
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          body_path: release_notes.md
           files: |
             dist/*.whl
             dist/*.tar.gz
-          generate_release_notes: true
+            dist/SHA256SUMS
           fail_on_unmatched_files: true

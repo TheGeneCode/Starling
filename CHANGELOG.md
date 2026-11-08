@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `read --pause-on-error` waits for Enter before closing when anything failed. The reader
   window opened by `starling capture` uses it, so failures are no longer lost when that window
   closes.
+- Every release ships a `SHA256SUMS` file and a build-provenance attestation, so a downloaded
+  wheel can be verified with `sha256sum -c` or `gh attestation verify`. Release notes are now
+  this changelog's entry for the version.
 
 ### Changed
 

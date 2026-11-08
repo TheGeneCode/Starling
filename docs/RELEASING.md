@@ -1,12 +1,15 @@
 # Releasing Starling
 
 Releases are cut by pushing a `vX.Y.Z` tag. `.github/workflows/release.yml` does the
-rest: it verifies the tag against the committed version and the changelog, builds the
-sdist and wheel, smoke-tests the wheel in a clean environment, and attaches both to a
-GitHub Release.
+rest: it first runs the whole CI workflow (tests, lint, format, package checks) as a gate,
+then verifies the tag against the committed version, builds the sdist and wheel,
+smoke-tests the wheel in a clean environment, writes `SHA256SUMS`, attests build
+provenance, and publishes a GitHub Release whose notes are this version's `CHANGELOG.md`
+section plus download-verification instructions.
 
-The workflow **fails** if the tag and `pyproject.toml` disagree, or if `CHANGELOG.md`
-has no section for the version. Follow the steps in order and neither happens.
+The workflow **fails** if CI fails on the tagged commit, if the tag and `pyproject.toml`
+disagree, or if `CHANGELOG.md` has no section for the version. Follow the steps in order
+and none of those happens.
 
 `scripts\release.ps1` automates the checklist below (tests/lint, changelog rewrite,
 version bump, commit, tag, push) with a single confirmation prompt. Run it from the repo
@@ -54,9 +57,11 @@ root: `.\scripts\release.ps1 -Version X.Y.Z`.
    git push origin main --follow-tags
    ```
 
-6. **Watch the run.** Confirm the Release workflow succeeds and that both
-   `starling-X.Y.Z-py3-none-any.whl` and `starling-X.Y.Z.tar.gz` are attached to the
-   release.
+6. **Watch the run.** Confirm the Release workflow succeeds, that
+   `starling-X.Y.Z-py3-none-any.whl`, `starling-X.Y.Z.tar.gz` and `SHA256SUMS` are attached
+   to the release, and that the notes show the CHANGELOG section. Optionally download the
+   wheel and run
+   `gh attestation verify starling-X.Y.Z-py3-none-any.whl --repo TheGeneCode/Starling`.
 
 7. **Verify the install actually works**, from a machine or container that is not a
    source checkout:
@@ -68,10 +73,17 @@ root: `.\scripts\release.ps1 -Version X.Y.Z`.
 
 ## If a release goes wrong
 
-- **Nobody could have installed it yet** (failed within minutes, no downloads): delete
-  the GitHub Release and the tag (`git push --delete origin vX.Y.Z`), fix, and re-tag
-  the same version.
-- **Otherwise**: never re-point a published tag. Fix forward with a patch release.
+`v*` tags are immutable: a repository ruleset ("Immutable release tags") blocks deleting,
+moving, or force-updating them, because users install from the tag itself (`@vX.Y.Z`), not
+from the Release assets. A tag that exists is installable even if its Release job failed.
+
+- **Fix forward.** Bump to the next patch version and release again. A failed run leaves a
+  tag with no GitHub Release; say so in the next version's CHANGELOG entry (for example
+  "0.3.0 was tagged but never released; use 0.3.1").
+- **Escape hatch, only if nobody can have installed it** (it failed within minutes):
+  Settings → Rules → Rulesets → **Immutable release tags** → Enforcement **Disabled**;
+  `git push --delete origin vX.Y.Z`; set Enforcement back to **Active** straight away; fix;
+  re-tag.
 
 ## Shared ancestry with MeadowLark: start from this copy
 
@@ -83,11 +95,12 @@ across, not the other way.** As of 2026-09-24:
   checks, rewrites `CHANGELOG.md` (heading and link definitions, with duplicate-section
   guards), and runs `uv lock`. MeadowLark's only stamps the version, commits with
   `git add .`, tags, and pushes.
-- `.github/workflows/release.yml` — not a straight fork. MeadowLark's builds a PyInstaller
-  exe and an Inno Setup installer on Windows; Starling's builds a `py3-none-any` wheel on
-  Linux. Only Starling's has the tag/version and changelog gates, `permissions:
-  contents: read`, and `setup-uv@v6`. MeadowLark's is more recently touched
-  (2026-09-24), but only to drop the obsolete genekit auth step.
+- `.github/workflows/release.yml` — as of 2026-11-08 both share one shape: a callable-CI gate
+  (`needs: ci`), SHA-pinned actions, no uv cache in the publishing job,
+  `persist-credentials: false`, a SHA256 checksum, a provenance attestation, and notes the job
+  writes itself. They still differ in what they build: MeadowLark's builds a PyInstaller exe and
+  an Inno Setup installer on Windows; Starling's builds a `py3-none-any` wheel on Linux, with
+  notes taken from `CHANGELOG.md`.
 - `scripts/make_icon.py` — Starling writes the `.ico` into the package
   (`src/starling/resources/`) so it ships in the wheel; MeadowLark writes it beside the
   source PNG.

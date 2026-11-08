@@ -1,3 +1,4 @@
+# Dependabot covers GitHub Actions and the Python lockfile (pyproject.toml + uv.lock).
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -7,3 +8,18 @@ updates:
     open-pull-requests-limit: 2
     commit-message:
       prefix: "ci"
+    # One PR for all action bumps, so ci.yml and release.yml move together.
+    groups:
+      actions:
+        patterns: ["*"]
+  # Grouped so one PR moves the lockfile at a time.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+    groups:
+      python:
+        patterns: ["*"]
