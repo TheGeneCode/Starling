@@ -9,7 +9,7 @@ with a re-diagnosis.
 
 ## Issue numbering
 
-**Next issue number: 15.**
+**Next issue number: 16.**
 
 Issue numbers are permanent IDs. Do not reuse a number when an issue is closed or removed.
 
@@ -33,6 +33,16 @@ copies diverge.
 copies of MeadowLark's and have diverged in both directions. Each release-process fix now lands
 in one repo. `dev/backlog.txt` item 14 covers the shared solution. Which copy is newer is
 recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
+
+### 15. No type checker: annotations are never verified — filed 2026-10-15
+
+Ruff is the only static check here; it lints style and some bug patterns but never checks types, so
+a wrong annotation, a `None` passed where a value is required, or a renamed attribute surfaces only
+at runtime or in a test. Add `pyright` (or `basedpyright`) as a dev dependency, start in `basic`
+mode with a baseline of today's errors, and run it in the fast tier and CI next to ruff. Once it is
+clean, optionally enable a Python code-intelligence (LSP) plugin in Claude Code (`/plugin`) so type
+errors and find-references arrive per edit, not per run. Filed from a cross-project tooling review
+(LSP / editor integration) on 2026-10-15.
 
 ## Closed
 
