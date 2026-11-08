@@ -1,5 +1,4 @@
 {
-    "codium.codeCompletion.enable": false,
     "python.testing.pytestArgs": [
         "tests"
     ],

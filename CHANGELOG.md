@@ -17,9 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every release ships a `SHA256SUMS` file and a build-provenance attestation, so a downloaded
   wheel can be verified with `sha256sum -c` or `gh attestation verify`. Release notes are now
   this changelog's entry for the version.
+- Bug reports and feature requests now use issue forms; the bug form asks you to remove your
+  key path, home directory and article text before submitting.
 
 ### Changed
 
+- The README now says exactly what the update check reveals: no identifiers, only what any web
+  request carries (your IP address and a generic user agent).
 - `starling read` exits with status 1 when any file failed (it exited 0).
 - Installing Starling never picks up a `google-cloud-texttospeech` 3.x release automatically;
   the dependency is capped below 3 until Starling is tested against it.

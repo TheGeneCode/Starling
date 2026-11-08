@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/TheGeneCode/Starling/security/advisories/new
+    about: Please report security issues privately, not as a public issue.
+  - name: My service-account key leaked
+    url: https://github.com/TheGeneCode/Starling/blob/main/SECURITY.md#if-your-service-account-key-leaks
+    about: Revoke the key first. The steps are in SECURITY.md; no issue needed.

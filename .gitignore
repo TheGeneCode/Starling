@@ -15,6 +15,8 @@ tts_usage.log
 
 # Local planning documents
 /plans
+# Agent notes for future plans: internal, kept local (docs/BACKLOG.md and FUTURE-IDEAS.md stay public as the roadmap)
+/docs/plan-notes.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -38,3 +40,4 @@ htmlcov/
 
 # Editor and assistant tooling state
 .qodo/
+.claude/settings.local.json

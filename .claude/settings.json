@@ -1,9 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv run *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
       "Bash(uv sync *)",
-      "PowerShell(uv run *)",
+      "PowerShell(uv run pytest *)",
+      "PowerShell(uv run ruff *)",
       "PowerShell(uv sync *)"
     ]
   }

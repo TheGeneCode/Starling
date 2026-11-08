@@ -107,8 +107,7 @@ across, not the other way.** As of 2026-09-24:
 - `scripts/make_social_preview.py` — same script with different palette and text. Starling's
   adds the font-fallback chain and a wider comment on the aspect-ratio reasoning.
 
-The shared solution is `dev/backlog.txt` item 14; until it lands, a fix to any of these
-files should be checked against the other repo's copy.
+Until a shared copy exists, check a fix to any of these files against the other repo's copy.
 
 ## Monthly maintenance check
 

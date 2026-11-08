@@ -14,8 +14,7 @@ with a re-diagnosis.
 Issue numbers are permanent IDs. Do not reuse a number when an issue is closed or removed.
 
 Items 1-8 were filed 2026-09-18 by a cross-project tooling audit (tree at "fix: correct
-formatting issues in CHANGELOG.md", 2026-09-03, plus uncommitted `.claude/` changes). The
-system-wide half of the same audit is in `dev/backlog.txt`.
+formatting issues in CHANGELOG.md", 2026-09-03, plus uncommitted `.claude/` changes).
 
 ## Open
 
@@ -31,7 +30,8 @@ copies diverge.
 `scripts/release.ps1` (136 lines vs MeadowLark's 78), `scripts/make_icon.py`,
 `scripts/make_social_preview.py` and `.github/workflows/release.yml` (80 vs 55 lines) began as
 copies of MeadowLark's and have diverged in both directions. Each release-process fix now lands
-in one repo. `dev/backlog.txt` item 14 covers the shared solution. Which copy is newer is
+in one repo. The 2026-11 public-repo hardening converged the two `release.yml` files on one shape;
+`release.ps1`, `make_icon.py` and `make_social_preview.py` still differ. Which copy is newer is
 recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
 
 ### 15. No type checker: annotations are never verified — filed 2026-10-15

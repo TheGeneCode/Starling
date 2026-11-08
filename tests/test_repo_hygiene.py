@@ -8,6 +8,7 @@ install has no history to inspect) rather than failing.
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import tomllib
@@ -23,6 +24,16 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 
 _CREDENTIAL_NAMES: Final = frozenset({".env", "tts-service-account.json", "SGU.py"})
 _CREDENTIAL_SUFFIXES: Final = frozenset({".pem", ".key", ".p12"})
+
+_GITHUB: Final = REPO_ROOT / ".github"
+# A file in the maintainer's private workspace that no tracked document may cite.
+_PRIVATE_POINTER: Final = "backlog.txt"
+_ALLOWED_UV_RUN_PREFIXES: Final = (
+    "Bash(uv run pytest",
+    "Bash(uv run ruff",
+    "PowerShell(uv run pytest",
+    "PowerShell(uv run ruff",
+)
 
 
 def _run_git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -412,3 +423,69 @@ def test_sgu_is_absent_from_all_history_fails_loudly_when_git_log_fails(
     )
     with pytest.raises(AssertionError):
         test_sgu_is_absent_from_all_history()
+
+
+def test_bug_report_form_requires_privacy_checkbox() -> None:
+    text = (_GITHUB / "ISSUE_TEMPLATE" / "bug_report.yml").read_text(encoding="utf-8")
+    i = text.index("id: privacy")
+    assert "type: checkboxes" in text[i - 40 : i]
+    assert "required: true" in text[i:]
+    assert "Do not paste `usage.log`" in text
+
+
+def test_issue_config_disables_blank_issues_and_links_security() -> None:
+    text = (_GITHUB / "ISSUE_TEMPLATE" / "config.yml").read_text(encoding="utf-8")
+    assert "blank_issues_enabled: false" in text
+    assert "/security/advisories/new" in text
+
+
+def test_pull_request_template_has_privacy_item() -> None:
+    text = (_GITHUB / "pull_request_template.md").read_text(encoding="utf-8")
+    assert "uv run pytest -q" in text
+    assert "home-directory paths" in text
+
+
+def test_tracked_claude_settings_do_not_auto_approve_arbitrary_uv_run() -> None:
+    settings = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    allow: list[str] = settings["permissions"]["allow"]
+    assert "Bash(uv run *)" not in allow
+    uv_run_entries = [entry for entry in allow if "uv run" in entry]
+    assert uv_run_entries
+    assert all(entry.startswith(_ALLOWED_UV_RUN_PREFIXES) for entry in uv_run_entries)
+
+
+def test_claude_local_settings_are_not_tracked() -> None:
+    _require_git()
+    tracked = _run_git_checked("ls-files", ".claude").splitlines()
+    assert not [line for line in tracked if line.endswith("settings.local.json")]
+
+
+def test_pre_push_hook_has_no_hardcoded_interpreter_or_private_cite() -> None:
+    text = (REPO_ROOT / ".githooks" / "pre-push").read_text(encoding="utf-8")
+    assert re.search(r"[A-Za-z]:/", text) is None
+    assert _PRIVATE_POINTER not in text
+    assert "backlog" not in text
+    assert "--pre-push" in text
+    assert "py -3" in text
+
+
+def test_plan_notes_are_not_tracked() -> None:
+    _require_git()
+    assert _run_git_checked("ls-files", "docs/plan-notes.md").strip() == ""
+
+
+def test_tracked_docs_do_not_point_at_private_files() -> None:
+    _require_git()
+    offenders = [
+        name
+        for name in _run_git_checked("ls-files", "*.md").splitlines()
+        if (REPO_ROOT / name).is_file()
+        and _PRIVATE_POINTER in (REPO_ROOT / name).read_text(encoding="utf-8")
+    ]
+    assert not offenders
+
+
+def test_security_md_quotes_no_price() -> None:
+    text = (REPO_ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    assert "US$" not in text
+    assert "README.md#what-it-costs" in text

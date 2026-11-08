@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# Block pushing lines that name a private repo or this machine's profile path (dev backlog #28).
+# Block pushing lines that name a private repo or this machine's profile path.
+# The checks live in the scanner itself: ~/.claude/scripts/check_public_history.py (its docstring).
 scanner="$HOME/.claude/scripts/check_public_history.py"
-if [ -f "$scanner" ]; then
-  C:/Python314/python.exe "$scanner" --pre-push || exit 1
-else
+if [ ! -f "$scanner" ]; then
   echo "pre-push: $scanner not found, public-history check skipped" >&2
+  exit 0
 fi
+# First interpreter that really runs Python 3.12+. "py -3" is the Windows launcher; on Windows a
+# bare python3 can be the Microsoft Store stub, which exists but fails, hence the probe.
+# $candidate is unquoted on purpose so "py -3" splits into command + flag.
+for candidate in "py -3" python3 python; do
+  if $candidate -c "import sys; sys.exit(sys.version_info < (3, 12))" </dev/null >/dev/null 2>&1; then
+    exec $candidate "$scanner" --pre-push
+  fi
+done
+echo "pre-push: no Python 3.12+ interpreter found, public-history check skipped" >&2
+exit 0

@@ -531,7 +531,7 @@ A new Starling release is available: v0.2.0 (you have 0.1.0)
 https://github.com/TheGeneCode/Starling/releases
 ```
 
-Every failure mode — no network, timeout, rate limit, malformed response, unwritable state file — is a silent no-op. The request is a plain GET of the public releases API and sends nothing about you. The check is skipped entirely when Starling runs from a source checkout. Throttle state lives in the platform's local app-data directory, not in `STARLING_HOME`.
+Every failure mode — no network, timeout, rate limit, malformed response, unwritable state file — is a silent no-op. The request is a plain GET of the public releases API and sends no identifiers; GitHub sees only what any web request carries (your IP address and a generic `python-requests` user agent). The check is skipped entirely when Starling runs from a source checkout. Throttle state lives in the platform's local app-data directory, not in `STARLING_HOME`.
 
 There is no auto-updater. Upgrade by re-running the install command with a newer tag and `--force` — check the [Releases page](https://github.com/TheGeneCode/Starling/releases) for the current one:
 

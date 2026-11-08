@@ -1,0 +1,71 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please search existing issues first.
+
+        **Issues are public.** Never paste your service-account JSON key, your `.env`, or article text. Credential errors print your key's path: replace your home directory with `~` before pasting.
+  - type: input
+    id: version
+    attributes:
+      label: Starling version
+      description: Output of `starling --version`
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and Python version
+      placeholder: Windows 11 24H2, Python 3.14.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - uv tool install from a git tag
+        - Release wheel
+        - From source (uv run)
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command you ran
+      placeholder: starling read --dry-run
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant lines from errors.log
+      description: Found at `<STARLING_HOME>/logs/errors.log`. Paste only the lines around the failure, with paths redacted. Do not paste `usage.log`; it records article filenames.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed my key path, home directory, and article text from everything above, and did not paste my `.env` or service-account key
+          required: true

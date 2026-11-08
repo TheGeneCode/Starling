@@ -17,11 +17,10 @@ See [Developer Setup](README.md#developer-setup) in the README for cloning, inst
 
 ## Reporting Bugs
 
-Open a GitHub issue with:
-- Steps to reproduce
-- What you expected vs. what happened
-- Your Starling version (`starling --version`), OS and Python version
-- The relevant lines from `<STARLING_HOME>/logs/errors.log`, **with paths redacted**
+Open a GitHub issue and choose **Bug report**. The form asks for your Starling version, OS,
+install method, the command you ran, and the relevant `errors.log` lines. Replace your home
+directory with `~` in anything you paste, and never paste your `.env`, your service-account key,
+or `usage.log` (it records article filenames).
 
 ## Reporting Security Issues
 

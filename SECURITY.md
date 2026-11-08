@@ -27,8 +27,8 @@ newest [release](https://github.com/TheGeneCode/Starling/releases) before report
 
 A leaked key lets the holder call the APIs enabled on your project and bill you for
 them. If you followed the README and granted the service account **no IAM roles**, that
-is the limit of the damage — but it is not nothing, and Text-to-Speech at Studio rates is
-US$160 per million characters.
+is the limit of the damage — but it is not nothing: Text-to-Speech bills per character,
+and [What It Costs](README.md#what-it-costs) in the README lists the current, dated rates.
 
 1. **Revoke the key first.** Google Cloud Console → **IAM & Admin → Service Accounts** →
    the account → **Keys** → delete the leaked key. Revoke before anything else; every
