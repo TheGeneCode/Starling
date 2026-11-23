@@ -16,11 +16,19 @@ import wave
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    GoogleAPICallError,
+    InvalidArgument,
+    PermissionDenied,
+    RetryError,
+    ServiceUnavailable,
+)
+from google.api_core.retry import Retry
 from google.auth.exceptions import DefaultCredentialsError
 
 from starling import reader
@@ -1750,3 +1758,268 @@ def test_run_read_confirm_preview_uses_guide(
     out = capsys.readouterr().out
     assert result == 0
     assert f"{len('the Supreme Court.')} characters" in out
+
+
+# ---------------------------------------------------------------------------
+# Transient Google errors (backlog #16, #17, #18)
+# ---------------------------------------------------------------------------
+
+_TWO_CHUNKS = ["First chunk.", "Second chunk."]
+
+
+def _process(
+    config: StarlingConfig, client: MagicMock, usage_logger: Any, logger: MagicMock
+) -> reader.FileResult:
+    """Run process_file on a one-line article with the fixed voice."""
+    filepath = config.input_dir / "article.txt"
+    filepath.write_text("Hello world.", encoding="utf-8")
+    return reader.process_file(
+        filepath,
+        client=client,
+        config=config,
+        voice_pool=("en-US-Chirp3-HD-Aoede",),
+        usage_logger=usage_logger,
+        logger=logger,
+        options=reader.ReadOptions(),
+    )
+
+
+def test_transient_synthesis_predicate_accepts_only_transient_codes() -> None:
+    """Test that only 503 and deadline errors are retried."""
+    predicate = reader.TRANSIENT_SYNTHESIS_ERROR
+    assert predicate(ServiceUnavailable("x"))
+    assert predicate(DeadlineExceeded("x"))
+    assert not predicate(PermissionDenied("x"))
+    assert not predicate(InvalidArgument("x"))
+
+
+def test_synthesis_retry_recovers_from_one_503() -> None:
+    """Test that a Retry on the transient predicate absorbs a single 503."""
+    fn = MagicMock(side_effect=[ServiceUnavailable("down"), "ok"])
+    retrying = Retry(predicate=reader.TRANSIENT_SYNTHESIS_ERROR, initial=0.001, maximum=0.001)
+
+    assert retrying(fn)() == "ok"
+    assert fn.call_count == 2
+
+
+def test_synthesis_retry_does_not_retry_permission_denied() -> None:
+    """Test that a non-transient error is raised on the first attempt."""
+    fn = MagicMock(side_effect=PermissionDenied("no"))
+    retrying = Retry(predicate=reader.TRANSIENT_SYNTHESIS_ERROR, initial=0.001, maximum=0.001)
+
+    with pytest.raises(PermissionDenied):
+        retrying(fn)()
+    assert fn.call_count == 1
+
+
+def test_synthesize_text_passes_default_retry(
+    fake_tts_client: MagicMock, wav_chunk: Callable[..., bytes]
+) -> None:
+    """Test that every call carries the module's SYNTHESIS_RETRY by default."""
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
+        audio_content=wav_chunk(b"\x00\x00")
+    )
+
+    reader.synthesize_text(
+        fake_tts_client, "Short.", voice_name="en-US-Chirp3-HD-Aoede", language_code="en-US"
+    )
+
+    assert fake_tts_client.synthesize_speech.call_args.kwargs["retry"] is reader.SYNTHESIS_RETRY
+
+
+def test_synthesize_text_passes_injected_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tts_client: MagicMock,
+    wav_chunk: Callable[..., bytes],
+) -> None:
+    """Test that an injected retry reaches every synthesize_speech call."""
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: _TWO_CHUNKS)
+    fake_tts_client.synthesize_speech.return_value = SimpleNamespace(
+        audio_content=wav_chunk(b"\x00\x00")
+    )
+    sentinel = Retry()
+
+    reader.synthesize_text(
+        fake_tts_client,
+        "x",
+        voice_name="en-US-Chirp3-HD-Aoede",
+        language_code="en-US",
+        retry=sentinel,
+    )
+
+    calls = fake_tts_client.synthesize_speech.call_args_list
+    assert len(calls) == 2
+    assert all(call.kwargs["retry"] is sentinel for call in calls)
+
+
+def test_synthesize_text_failure_reports_chars_of_finished_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tts_client: MagicMock,
+    wav_chunk: Callable[..., bytes],
+) -> None:
+    """Test that the error counts only the characters Google already returned audio for."""
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: _TWO_CHUNKS)
+    cause = ServiceUnavailable("down")
+    fake_tts_client.synthesize_speech.side_effect = [
+        SimpleNamespace(audio_content=wav_chunk(b"\x00\x00")),
+        cause,
+    ]
+
+    with pytest.raises(reader.SynthesisFailedError) as excinfo:
+        reader.synthesize_text(
+            fake_tts_client, "x", voice_name="en-US-Chirp3-HD-Aoede", language_code="en-US"
+        )
+
+    assert excinfo.value.chars_sent == len(_TWO_CHUNKS[0])
+    assert excinfo.value.cause is cause
+    assert excinfo.value.__cause__ is cause
+
+
+def test_synthesize_text_first_chunk_failure_has_zero_chars_sent(
+    fake_tts_client: MagicMock,
+) -> None:
+    """Test that nothing is billed when the very first chunk fails."""
+    fake_tts_client.synthesize_speech.side_effect = ServiceUnavailable("down")
+
+    with pytest.raises(reader.SynthesisFailedError) as excinfo:
+        reader.synthesize_text(
+            fake_tts_client, "Short.", voice_name="en-US-Chirp3-HD-Aoede", language_code="en-US"
+        )
+
+    assert excinfo.value.chars_sent == 0
+
+
+def test_synthesize_text_wraps_retry_error(fake_tts_client: MagicMock) -> None:
+    """Test that a retry timeout (RetryError, not a call error) is still wrapped."""
+    fake_tts_client.synthesize_speech.side_effect = RetryError(
+        "Timeout of 60.0s exceeded", ServiceUnavailable("down")
+    )
+
+    with pytest.raises(reader.SynthesisFailedError):
+        reader.synthesize_text(
+            fake_tts_client, "Short.", voice_name="en-US-Chirp3-HD-Aoede", language_code="en-US"
+        )
+
+
+def test_process_file_google_error_prints_cause_not_unexpected(
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that a Google failure prints its message and is still logged with a traceback."""
+    fake_tts_client.synthesize_speech.side_effect = ServiceUnavailable(
+        "The service is currently unavailable"
+    )
+    logger = MagicMock()
+
+    result = _process(tmp_config, fake_tts_client, MagicMock(), logger)
+
+    out = capsys.readouterr().out
+    assert not result.written
+    assert result.error is not None
+    for text in (result.error, out):
+        assert "Google Text-to-Speech error" in text
+        assert "currently unavailable" in text
+    assert "Unexpected error" not in out
+    assert str(tmp_config.error_log_path) not in result.error
+    logger.exception.assert_called_once()
+
+
+def test_process_file_partial_failure_logs_billed_chars(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    wav_chunk: Callable[..., bytes],
+    isolated_logging: None,
+) -> None:
+    """Test that characters already synthesized are logged and counted in the month total."""
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: _TWO_CHUNKS)
+    fake_tts_client.synthesize_speech.side_effect = [
+        SimpleNamespace(audio_content=wav_chunk(b"\x00\x00")),
+        ServiceUnavailable("down"),
+    ]
+    usage_logger = reader.initialize_usage_logger(tmp_config.usage_log_path)
+
+    result = _process(tmp_config, fake_tts_client, usage_logger, MagicMock())
+
+    count = len(_TWO_CHUNKS[0])
+    lines = tmp_config.usage_log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert "(failed, partial)" in lines[0]
+    assert f"characters: {count:,}" in lines[0]
+    assert reader.get_monthly_total(tmp_config.usage_log_path)["total_chars"] == count
+    assert result.error is not None
+    assert "were billed" in result.error
+
+
+def test_process_file_first_chunk_failure_logs_no_usage(
+    tmp_config: StarlingConfig, fake_tts_client: MagicMock
+) -> None:
+    """Test that a failure before any audio returned writes no usage entry."""
+    fake_tts_client.synthesize_speech.side_effect = ServiceUnavailable("down")
+    usage_logger = MagicMock()
+
+    _process(tmp_config, fake_tts_client, usage_logger, MagicMock())
+
+    usage_logger.info.assert_not_called()
+
+
+def test_failure_summary_names_input_dir(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test that the summary prints the directory the failed files stay in."""
+    reader.print_failure_summary([reader.FileFailure(tmp_path / "a.txt", "x")], 1, tmp_path)
+
+    out = capsys.readouterr().out
+    assert str(tmp_path) in out
+    assert "the input directory" not in out
+
+
+@pytest.mark.usefixtures("isolated_logging")
+def test_run_read_failure_summary_uses_input_dir_override(
+    tmp_path: Path,
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that an --input-dir override, not the configured directory, is named."""
+    other = tmp_path / "other_input"
+    other.mkdir()
+    (other / "a.txt").write_text("Text.", encoding="utf-8")
+    fake_tts_client.synthesize_speech.side_effect = OSError("disk full")
+    monkeypatch.setattr(reader.texttospeech, "TextToSpeechClient", lambda: fake_tts_client)
+
+    result = reader.run_read(
+        config=tmp_config, options=reader.ReadOptions(assume_yes=True, input_dir=other)
+    )
+
+    out = capsys.readouterr().out
+    assert result == 1
+    assert f"Failed files stay in {other}" in out
+    assert str(tmp_config.input_dir) not in out
+
+
+def test_process_file_partial_failure_survives_usage_log_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_config: StarlingConfig,
+    fake_tts_client: MagicMock,
+    wav_chunk: Callable[..., bytes],
+) -> None:
+    """Test that an unwritable usage log does not mask the synthesis failure."""
+    monkeypatch.setattr(reader, "split_text_into_chunks", lambda _text: _TWO_CHUNKS)
+    fake_tts_client.synthesize_speech.side_effect = [
+        SimpleNamespace(audio_content=wav_chunk(b"\x00\x00")),
+        ServiceUnavailable("down"),
+    ]
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError("read-only")
+
+    monkeypatch.setattr(reader, "log_usage", _boom)
+
+    result = _process(tmp_config, fake_tts_client, MagicMock(), MagicMock())
+
+    assert not result.written
+    assert result.error is not None
+    assert "were billed" in result.error

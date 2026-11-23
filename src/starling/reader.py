@@ -27,7 +27,13 @@ from threading import Event, Thread
 from typing import TYPE_CHECKING, Final
 
 from genekit.logging import configure_logging, dedicated_file_logger, get_logger
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    GoogleAPICallError,
+    GoogleAPIError,
+    ServiceUnavailable,
+)
+from google.api_core.retry import Retry, if_exception_type
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import texttospeech
 from num2words import num2words
@@ -62,6 +68,17 @@ ERROR_LOG_PATH = CONFIG.error_log_path
 
 DEFAULT_SAMPLE_RATE_HERTZ: Final = 24000
 WAV_MAGIC: Final = b"RIFF"
+
+# Transient statuses only (backlog #16). The generated client sets no default retry for
+# SynthesizeSpeech, so one 503 used to fail the whole article.
+TRANSIENT_SYNTHESIS_ERROR: Final = if_exception_type(ServiceUnavailable, DeadlineExceeded)
+SYNTHESIS_RETRY: Final = Retry(
+    predicate=TRANSIENT_SYNTHESIS_ERROR,
+    initial=1.0,
+    maximum=10.0,
+    multiplier=2.0,
+    timeout=60.0,
+)
 
 ARCHIVE_FAILURE_REASON: Final = (
     "the .wav was written, but the input could not be moved to the archive, "
@@ -128,6 +145,21 @@ class FileFailure:
 
     path: Path
     reason: str
+
+
+class SynthesisFailedError(Exception):
+    """
+    A chunk still failed after retries.
+
+    `chars_sent` counts the characters of the chunks Google had already returned audio for;
+    those were billed, so the caller logs them to usage even though the article failed.
+    The Google exception is both `cause` and `__cause__`.
+    """
+
+    def __init__(self, cause: GoogleAPIError, *, chars_sent: int) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.chars_sent = chars_sent
 
 
 def spinner(should_spin: Event) -> None:
@@ -336,13 +368,13 @@ def confirm_synthesis(*, prompt: Callable[[str], str] = input) -> bool:
     return answer.lower() == "y"
 
 
-def print_failure_summary(failures: Sequence[FileFailure], total: int) -> None:
+def print_failure_summary(failures: Sequence[FileFailure], total: int, input_dir: Path) -> None:
     """Print the end-of-run list of failed files, so an error is not lost mid-scroll."""
     print()
     print(f"{len(failures)} of {total} file(s) failed:")
     for failure in failures:
         print(f"  {failure.path.name}: {failure.reason}")
-    print("Failed files stay in the input directory; the next `starling read` retries them.")
+    print(f"Failed files stay in {input_dir}; reading that directory again retries them.")
 
 
 def wait_for_enter(*, prompt: Callable[[str], str] = input) -> None:
@@ -543,8 +575,14 @@ def synthesize_text(
     voice_name: str,
     language_code: str,
     sample_rate: int = DEFAULT_SAMPLE_RATE_HERTZ,
+    retry: Retry = SYNTHESIS_RETRY,
 ) -> bytes:
-    """Chunk `text`, synthesize every chunk with one voice, and return one WAV blob."""
+    """
+    Chunk `text`, synthesize every chunk with one voice, and return one WAV blob.
+
+    Transient errors are retried per chunk with `retry`; a chunk that still fails raises
+    `SynthesisFailedError`, carrying the characters of the chunks already synthesized.
+    """
     voice = texttospeech.VoiceSelectionParams(
         language_code=language_code,
         name=voice_name,
@@ -553,17 +591,21 @@ def synthesize_text(
         audio_encoding=texttospeech.AudioEncoding.LINEAR16,
         sample_rate_hertz=sample_rate,
     )
-    audio_chunks = [
-        wav_pcm_frames(
-            client.synthesize_speech(
+    # An accumulator, not a comprehension: the billed count must survive a failure.
+    audio_chunks: list[bytes] = []
+    chars_sent = 0
+    for chunk in split_text_into_chunks(text):
+        try:
+            response = client.synthesize_speech(
                 input=texttospeech.SynthesisInput(text=chunk),
                 voice=voice,
                 audio_config=audio_config,
-            ).audio_content,
-            sample_rate=sample_rate,
-        )
-        for chunk in split_text_into_chunks(text)
-    ]
+                retry=retry,
+            )
+        except GoogleAPIError as exc:  # GoogleAPICallError, or RetryError on retry timeout
+            raise SynthesisFailedError(exc, chars_sent=chars_sent) from exc
+        audio_chunks.append(wav_pcm_frames(response.audio_content, sample_rate=sample_rate))
+        chars_sent += len(chunk)
     return combine_audio_chunks(audio_chunks, sample_rate)
 
 
@@ -623,6 +665,20 @@ def process_file(
                 len(text),
                 config.usage_log_path,
             )
+        except SynthesisFailedError as e:
+            logger.exception("Google Text-to-Speech failed while processing %s", filepath)
+            error = f"Google Text-to-Speech error while processing {filepath}: {e}"
+            if e.chars_sent:
+                with contextlib.suppress(OSError):
+                    log_usage(
+                        usage_logger,
+                        f"{filepath.stem} (failed, partial)",
+                        selected_voice,
+                        e.chars_sent,
+                        config.usage_log_path,
+                    )
+                error += f" ({e.chars_sent:,} characters already synthesized were billed)"
+            print(error)
         except FileNotFoundError as e:
             error = f"File error while processing {filepath}: {e!s}"
             print(error)
@@ -826,7 +882,7 @@ def _run_read(config: StarlingConfig | None, options: ReadOptions) -> int:
             failures.append(FileFailure(filepath, ARCHIVE_FAILURE_REASON))
 
     if failures:
-        print_failure_summary(failures, len(input_paths))
+        print_failure_summary(failures, len(input_paths), input_dir)
         return 1
     print("All files completed.")
     return 0

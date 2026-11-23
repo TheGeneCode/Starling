@@ -18,35 +18,6 @@ formatting issues in CHANGELOG.md", 2026-09-03, plus uncommitted `.claude/` chan
 
 ## Open
 
-### 16. One transient Google error fails the whole article and drops its finished chunks — filed 2026-11-11
-
-Found 2026-11-11, when an article failed on `503 The service is currently unavailable`.
-`synthesize_text` in `src/starling/reader.py` calls `client.synthesize_speech` once per chunk with
-no `retry=`. The generated client sets no default retry for `SynthesizeSpeech` either: its
-transport `base.py` wraps it with only `default_timeout=None`. So a single 503 (or another
-transient status) raises out of the chunk list comprehension. The article fails, and every chunk
-Google had already synthesized is discarded. Those characters never reach `log_usage`, so the
-month total undercounts what was sent. The fix is a bounded `google.api_core.retry.Retry` on
-transient codes (`ServiceUnavailable`, `DeadlineExceeded`), passed per call.
-
-### 17. A Google API failure mid-file is reported as "Unexpected error … check the log" — filed 2026-11-11
-
-`process_file` in `src/starling/reader.py` catches only `FileNotFoundError`, `PermissionError`
-and `OSError` by name. A `GoogleAPICallError` from synthesis falls into the bare `except
-Exception`, which logs a traceback and prints "Unexpected error occurred … Check <error log> for
-details." That failure is expected: `_run_read` already reports the same exception type clearly
-when it checks voices. The user is sent to a log for a one-line cause ("503 … try again later")
-that could have been printed in the console. Catch `GoogleAPICallError` by name, print its
-message, and keep logging it.
-
-### 18. The failure summary says "the input directory" without naming it — filed 2026-11-11
-
-`print_failure_summary` in `src/starling/reader.py` ends with "Failed files stay in the input
-directory". It never prints the resolved `config.input_dir`, or the `--input-dir` override. A
-user with stale `input/` and `logfile.txt` from before configurable directories (gitignored,
-still in an old checkout) looked there, found them empty, and concluded the file and the log
-entry were lost. Print the directory's path in that line.
-
 ### 5. `normalize_version` is byte-identical to MeadowLark's
 
 `src/starling/update_check.py:55` and MeadowLark `src/version_utils.py:51` are the same
@@ -63,6 +34,47 @@ in one repo. The 2026-11 public-repo hardening converged the two `release.yml` f
 `release.ps1`, `make_icon.py` and `make_social_preview.py` still differ. Which copy is newer is
 recorded in `docs/RELEASING.md` (Starling's, 2026-09-24), so the next fix starts from it.
 
+## Closed
+
+### 16. One transient Google error fails the whole article and drops its finished chunks — filed 2026-11-11
+
+Found 2026-11-11, when an article failed on `503 The service is currently unavailable`.
+`synthesize_text` in `src/starling/reader.py` calls `client.synthesize_speech` once per chunk with
+no `retry=`. The generated client sets no default retry for `SynthesizeSpeech` either: its
+transport `base.py` wraps it with only `default_timeout=None`. So a single 503 (or another
+transient status) raises out of the chunk list comprehension. The article fails, and every chunk
+Google had already synthesized is discarded. Those characters never reach `log_usage`, so the
+month total undercounts what was sent. The fix is a bounded `google.api_core.retry.Retry` on
+transient codes (`ServiceUnavailable`, `DeadlineExceeded`), passed per call.
+
+Closed 2026-11-23. `SYNTHESIS_RETRY` (a bounded `Retry` on `ServiceUnavailable` and
+`DeadlineExceeded`) is passed per chunk, and a final failure raises `SynthesisFailedError`
+carrying `chars_sent`, which `process_file` logs to usage as a `(failed, partial)` entry.
+
+### 17. A Google API failure mid-file is reported as "Unexpected error … check the log" — filed 2026-11-11
+
+`process_file` in `src/starling/reader.py` catches only `FileNotFoundError`, `PermissionError`
+and `OSError` by name. A `GoogleAPICallError` from synthesis falls into the bare `except
+Exception`, which logs a traceback and prints "Unexpected error occurred … Check <error log> for
+details." That failure is expected: `_run_read` already reports the same exception type clearly
+when it checks voices. The user is sent to a log for a one-line cause ("503 … try again later")
+that could have been printed in the console. Catch `GoogleAPICallError` by name, print its
+message, and keep logging it.
+
+Closed 2026-11-23. `process_file` catches `SynthesisFailedError` by name, prints the Google
+message and still logs the traceback.
+
+### 18. The failure summary says "the input directory" without naming it — filed 2026-11-11
+
+`print_failure_summary` in `src/starling/reader.py` ends with "Failed files stay in the input
+directory". It never prints the resolved `config.input_dir`, or the `--input-dir` override. A
+user with stale `input/` and `logfile.txt` from before configurable directories (gitignored,
+still in an old checkout) looked there, found them empty, and concluded the file and the log
+entry were lost. Print the directory's path in that line.
+
+Closed 2026-11-23. `print_failure_summary(failures, total, input_dir)` prints the resolved
+directory, including an `--input-dir` override.
+
 ### 15. No type checker: annotations are never verified — filed 2026-10-15
 
 Ruff is the only static check here; it lints style and some bug patterns but never checks types, so
@@ -73,7 +85,9 @@ clean, optionally enable a Python code-intelligence (LSP) plugin in Claude Code 
 errors and find-references arrive per edit, not per run. Filed from a cross-project tooling review
 (LSP / editor integration) on 2026-10-15.
 
-## Closed
+Closed 2026-11-23. basedpyright in `basic` mode with a committed
+`.basedpyright/baseline.json` and a CI `Type check` step. The optional LSP plugin is left to
+the user.
 
 ### 14. Captured articles are saved with `\r\r\n` line endings
 

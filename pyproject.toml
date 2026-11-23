@@ -57,6 +57,7 @@ starling = "starling.cli:main"
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.40.2",
     "pillow>=13.0.0",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
@@ -145,3 +146,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLC0415", "TRY002", "N818", "PT018", "N806", "RUF012", "N802", "N815", "ANN"]
 "scripts/**" = ["INP001"]  # standalone maintenance scripts, deliberately not a package
+
+[tool.basedpyright]
+include = ["src", "tests", "scripts"]
+typeCheckingMode = "basic"
+# Pinned so the committed baseline is identical on every CI leg: capture.py and
+# update_check.py branch on sys.platform, which pyright otherwise takes from the host.
+pythonVersion = "3.12"
+pythonPlatform = "Windows"

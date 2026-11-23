@@ -87,6 +87,6 @@ pointers to it and must not be allowed to accumulate rules of their own.
 
 ## Workflow
 
-- After any change: `uv run pytest -q` and `uv run ruff check` (zero findings).
+- After any change: `uv run pytest -q`, `uv run ruff check` (zero findings) and `uv run basedpyright` (nothing beyond `.basedpyright/baseline.json`; re-run with `--writebaseline` after fixing a baselined error).
 - Releases follow [`docs/RELEASING.md`](../docs/RELEASING.md); do not invent a release
   procedure.
