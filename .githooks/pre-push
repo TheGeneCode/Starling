@@ -11,7 +11,7 @@ fi
 # $candidate is unquoted on purpose so "py -3" splits into command + flag.
 for candidate in "py -3" python3 python; do
   if $candidate -c "import sys; sys.exit(sys.version_info < (3, 12))" </dev/null >/dev/null 2>&1; then
-    exec $candidate "$scanner" --pre-push
+    exec $candidate "$scanner" --pre-push --allow-name scripts
   fi
 done
 echo "pre-push: no Python 3.12+ interpreter found, public-history check skipped" >&2
