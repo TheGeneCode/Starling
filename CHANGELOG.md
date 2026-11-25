@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `errors.log` no longer grows without limit: at 1 MB it rolls over to `errors.log.1`
+  (one backup kept), so old tracebacks age out and the log stays under about 2 MB.
 - The README now says exactly what the update check reveals: no identifiers, only what any web
   request carries (your IP address and a generic user agent).
 - `starling read` exits with status 1 when any file failed (it exited 0).

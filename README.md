@@ -455,7 +455,7 @@ Google's `synthesize_speech` accepts at most 5,000 bytes per request. Starling s
 | Input | `~/Starling/input` | `.txt` files waiting to be read |
 | Output | `~/Starling/output` | Generated `.wav` files |
 | Archive | `~/Starling/archive` | Inputs that were successfully synthesized |
-| Logs | `~/Starling/logs/` | `usage.log` and `errors.log` |
+| Logs | `~/Starling/logs/` | `usage.log` and `errors.log` (capped: rolls to `errors.log.1` at 1 MB) |
 
 `read` writes `<input stem>.wav` to the output directory and, only after a file is successfully synthesized **and** logged, moves the input into the archive — so a failed article stays in the input directory and is retried on the next run. All directories are created on first run.
 

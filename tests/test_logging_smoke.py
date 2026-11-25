@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+from logging.handlers import RotatingFileHandler
 from typing import TYPE_CHECKING
 
 import pytest
 from genekit.logging import configure_logging, dedicated_file_logger, get_logger
 
+from starling import reader
+
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from starling.config import StarlingConfig
 
 
 def test_dedicated_file_logger_writes_to_given_path(tmp_path: Path, isolated_logging: None) -> None:
@@ -117,3 +123,55 @@ def test_configure_logging_rejects_silent_config(isolated_logging: None) -> None
     """Test that configure_logging raises ValueError for silent config."""
     with pytest.raises(ValueError, match="requires log_file"):
         configure_logging("ERROR", console="none", log_file=None)
+
+
+class _StopRunError(Exception):
+    """Raised by a spy to halt run_read right after configure_logging."""
+
+
+def test_run_read_passes_rotation_constants_to_configure_logging(
+    tmp_config: StarlingConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that the read command wires the rotation constants into configure_logging."""
+    (tmp_config.input_dir / "article.txt").write_text("Hello.", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def spy(*_args: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+        raise _StopRunError
+
+    monkeypatch.setattr(reader, "require_credentials", lambda _config: None)
+    monkeypatch.setattr(reader, "configure_logging", spy)
+
+    with pytest.raises(_StopRunError):
+        reader.run_read(config=tmp_config)
+
+    assert captured["rotate_bytes"] == reader.ERROR_LOG_MAX_BYTES
+    assert captured["backup_count"] == reader.ERROR_LOG_BACKUPS
+
+
+def test_configure_logging_with_reader_constants_rolls_over_to_one_backup(
+    tmp_path: Path, isolated_logging: None
+) -> None:
+    """Test that the root handler rotates at the cap and keeps exactly log + log.1."""
+    log_path = tmp_path / "errors.log"
+    configure_logging(
+        "ERROR",
+        log_file=log_path,
+        console="none",
+        rotate_bytes=reader.ERROR_LOG_MAX_BYTES,
+        backup_count=reader.ERROR_LOG_BACKUPS,
+    )
+    handler = next(h for h in logging.getLogger().handlers if isinstance(h, RotatingFileHandler))
+    assert handler.maxBytes == reader.ERROR_LOG_MAX_BYTES
+    assert handler.backupCount == reader.ERROR_LOG_BACKUPS
+
+    logger = get_logger("starling.test.rotation")
+    chunk = "x" * (reader.ERROR_LOG_MAX_BYTES * 6 // 10)
+    for marker in ("first", "second", "third"):
+        logger.error("%s %s", marker, chunk)
+    handler.flush()
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["errors.log", "errors.log.1"]
+    assert log_path.stat().st_size <= reader.ERROR_LOG_MAX_BYTES
+    assert "third" in log_path.read_text(encoding="utf-8")

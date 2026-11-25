@@ -86,6 +86,10 @@ ARCHIVE_FAILURE_REASON: Final = (
 )
 PAUSE_PROMPT: Final = "Press Enter to close this window."
 
+# Cap errors.log so old tracebacks age out instead of burying recent ones; ~2 MB on disk.
+ERROR_LOG_MAX_BYTES: Final = 1024 * 1024
+ERROR_LOG_BACKUPS: Final = 1
+
 OPEN_QUOTE: Final = "“"
 CLOSE_QUOTE: Final = "”"
 
@@ -848,7 +852,13 @@ def _run_read(config: StarlingConfig | None, options: ReadOptions) -> int:
         print(f"Error: {exc}")
         return 1
 
-    configure_logging("ERROR", log_file=config.error_log_path, console="none")
+    configure_logging(
+        "ERROR",
+        log_file=config.error_log_path,
+        console="none",
+        rotate_bytes=ERROR_LOG_MAX_BYTES,
+        backup_count=ERROR_LOG_BACKUPS,
+    )
     logger = get_logger(__name__)
     usage_logger = initialize_usage_logger(config.usage_log_path)
 
